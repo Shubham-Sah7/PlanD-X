@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useProgramme } from "@/lib/programme-context";
 
@@ -74,25 +75,21 @@ export function AppSidebar() {
     <aside className="flex h-screen w-[220px] shrink-0 flex-col border-r border-slate-200 bg-white select-none">
       {/* Brand Header */}
       <div className="flex h-14 items-center gap-3 px-5 border-b border-slate-200/80">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 text-white shadow-xs">
-          <svg
-            className="h-4 w-4"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <rect x="3" y="3" width="7" height="7" rx="1.5" />
-            <rect x="14" y="3" width="7" height="7" rx="1.5" />
-            <rect x="3" y="14" width="7" height="7" rx="1.5" />
-            <path d="M14 17.5h7" />
-          </svg>
-        </div>
-        <span className="text-[16px] font-bold tracking-tight text-slate-900">
-          PlanD-X
-        </span>
+        <Link href="/programme" className="flex items-center gap-2.5 group">
+          <div className="relative flex h-7 w-7 items-center justify-center rounded-lg overflow-hidden shrink-0 shadow-xs transition-transform group-hover:scale-105">
+            <Image
+              src="/logo.png"
+              alt="PlanD-X Logo"
+              width={28}
+              height={28}
+              className="h-full w-full object-contain"
+              priority
+            />
+          </div>
+          <span className="text-[16px] font-bold tracking-tight text-slate-900 group-hover:text-blue-600 transition-colors">
+            PlanD-X
+          </span>
+        </Link>
       </div>
 
       {/* Navigation Sections */}

@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   Box,
@@ -379,10 +380,21 @@ export default function Model3DPage() {
           <div className="flex items-center gap-3">
             <Link
               href="/programme"
-              className="flex items-center gap-1.5 text-slate-500 hover:text-slate-800 transition-colors text-[12px] font-medium"
+              className="flex items-center gap-2 text-slate-700 hover:text-slate-900 transition-colors text-[12px] font-medium"
             >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              <span>Programme</span>
+              <ArrowLeft className="h-3.5 w-3.5 text-slate-400" />
+              <div className="relative h-5 w-5 rounded-md overflow-hidden shrink-0 shadow-xs">
+                <Image
+                  src="/logo.png"
+                  alt="PlanD-X"
+                  width={20}
+                  height={20}
+                  className="h-full w-full object-contain"
+                />
+              </div>
+              <span className="font-semibold text-slate-800">PlanD-X</span>
+              <span className="text-slate-300 font-normal">/</span>
+              <span className="text-slate-500">Programme</span>
             </Link>
             <span className="text-slate-300">/</span>
 
