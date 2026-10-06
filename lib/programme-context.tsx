@@ -83,7 +83,7 @@ const defaultFilters: FilterState = {
 const ProgrammeContext = createContext<ProgrammeContextType | null>(null);
 
 export function ProgrammeProvider({ children }: { children: React.ReactNode }) {
-  const [activeView, setActiveViewState] = useState<ViewMode>("gantt"); // default to gantt / homepage per user request
+  const [activeView, setActiveViewState] = useState<ViewMode>("3d"); // default to 3d PlanD-X Programme screen per reference image
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>("task-columns");
   const [drawerOpen, setDrawerOpen] = useState<boolean>(true);
   const [expandedNodes, setExpandedNodesState] = useState<Set<string>>(

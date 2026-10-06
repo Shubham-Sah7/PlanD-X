@@ -27,7 +27,7 @@ export type ProgrammeState =
 
 export type ZoomLevel = "day" | "week" | "month" | "quarter";
 
-export type ViewMode = "gantt" | "network" | "list" | "calendar";
+export type ViewMode = "3d" | "gantt" | "network" | "list" | "calendar";
 
 export type FocusPreset =
   | "all"

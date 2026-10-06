@@ -1,11 +1,13 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import {
   GanttChartSquare,
   List,
   Network,
   Calendar,
+  Box,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -19,7 +21,7 @@ import {
 import { useProgramme } from "@/lib/programme-context";
 import type { ViewMode, ZoomLevel } from "@/lib/programme-types";
 
-const VIEWS: { id: ViewMode; label: string; icon: React.ElementType }[] = [
+const VIEWS: { id: ViewMode; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: "gantt", label: "Gantt", icon: GanttChartSquare },
   { id: "network", label: "Network", icon: Network },
   { id: "list", label: "List", icon: List },
@@ -91,6 +93,17 @@ export function ProgrammeToolbar() {
             </button>
           );
         })}
+        <button
+          onClick={() => setActiveView("3d")}
+          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-all ${
+            state.activeView === "3d"
+              ? "bg-blue-600 text-white shadow-2xs font-semibold"
+              : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+          }`}
+        >
+          <Box className="h-4 w-4" />
+          <span>3D Model</span>
+        </button>
       </div>
 
       {/* Right: Controls (Dynamic per view) */}

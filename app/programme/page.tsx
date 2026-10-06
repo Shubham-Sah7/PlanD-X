@@ -13,6 +13,7 @@ import { ListView } from "@/components/programme/list/list-view";
 import { NetworkView } from "@/components/programme/network/network-view";
 import { TaskDrawer } from "@/components/programme/task-drawer";
 import { MobileProgramme } from "@/components/programme/mobile/mobile-programme";
+import Model3DPage from "./3d/page";
 
 export default function ProgrammePage() {
   const { state } = useProgramme();
@@ -21,6 +22,11 @@ export default function ProgrammePage() {
   // Mobile experience
   if (isMobile) {
     return <MobileProgramme />;
+  }
+
+  // 3D Model View (PlanD-X Programme 3D interface matching reference screenshot)
+  if (state.activeView === "3d") {
+    return <Model3DPage />;
   }
 
   return (
