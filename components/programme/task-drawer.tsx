@@ -63,17 +63,17 @@ export function TaskDrawer() {
     (currentTask.successorDetails?.length || currentTask.successors?.length || 0);
 
   return (
-    <div className="flex h-full w-[380px] shrink-0 flex-col rounded-xl border border-slate-200/70 bg-white shadow-2xs select-none overflow-hidden">
+    <div className="flex h-full w-[380px] shrink-0 flex-col border border-slate-200 bg-white shadow-sm select-none overflow-hidden rounded-lg">
       {/* Drawer Header */}
       <div className="flex items-start justify-between border-b border-slate-200 p-4 pb-3">
         <div className="flex-1 min-w-0 pr-2">
           {/* Task ID */}
-          <div className="font-mono text-[12px] font-semibold text-slate-500 mb-0.5">
+          <div className="font-mono text-[12px] font-medium text-slate-400 mb-0.5">
             {currentTask.id}
           </div>
 
           {/* Task Name */}
-          <h3 className="text-[16px] font-bold text-slate-900 leading-snug">
+          <h3 className="text-[15px] font-semibold text-slate-900 leading-snug">
             {currentTask.name}
           </h3>
 
@@ -232,28 +232,17 @@ export function TaskDrawer() {
               </div>
             </div>
 
-            {/* Field: Start */}
+            {/* Field: Schedule (Unified Start → Finish · Duration) */}
             <div className="flex items-center justify-between py-1">
-              <span className="text-slate-500">Start</span>
-              <div className="flex items-center gap-1.5 font-medium text-slate-800">
-                <span>{currentTask.displayStart || "12 Nov 2025"}</span>
-                <Calendar className="h-3.5 w-3.5 text-slate-400" />
+              <span className="text-slate-500">Schedule</span>
+              <div className="flex items-center gap-1.5 font-medium text-slate-800 text-[12.5px]">
+                <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                <span>{currentTask.displayStart || "20 Dec 2025"}</span>
+                <span className="text-slate-400">→</span>
+                <span>{currentTask.displayEnd || "16 Jan 2026"}</span>
+                <span className="text-slate-300">·</span>
+                <span className="font-mono text-slate-500 text-[11.5px]">{currentTask.duration || 12}d</span>
               </div>
-            </div>
-
-            {/* Field: Finish */}
-            <div className="flex items-center justify-between py-1">
-              <span className="text-slate-500">Finish</span>
-              <div className="flex items-center gap-1.5 font-medium text-slate-800">
-                <span>{currentTask.displayEnd || "03 Dec 2025"}</span>
-                <Calendar className="h-3.5 w-3.5 text-slate-400" />
-              </div>
-            </div>
-
-            {/* Field: Duration */}
-            <div className="flex items-center justify-between py-1">
-              <span className="text-slate-500">Duration</span>
-              <span className="font-medium text-slate-800">{currentTask.duration || 15} days</span>
             </div>
 
             {/* Field: Cost Code */}

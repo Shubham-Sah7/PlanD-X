@@ -730,24 +730,21 @@ export function ListView() {
   const taskRowPy = density === "compact" ? "py-1" : "py-2";
 
   return (
-    <div className="relative flex h-full flex-col rounded-2xl border border-slate-200/90 bg-white shadow-sm overflow-hidden select-none">
+    <div className="relative flex h-full flex-col rounded-xl border border-slate-200 bg-white overflow-hidden select-none">
       {/* ─── 1. Ultra-Refined Sub-Header Banner ─────────────────────── */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 bg-white/90 backdrop-blur-md px-5 py-3 shrink-0 z-20">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-2.5 shrink-0 z-20">
         {/* Left: Building Icon Badge + Title + Project Subtitle */}
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-b from-blue-50 to-blue-100/80 text-blue-600 shadow-2xs border border-blue-200/70">
-            <Building2 className="h-5 w-5" />
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 border border-slate-200">
+            <Building2 className="h-4.5 w-4.5" />
           </div>
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
-              <h2 className="text-[17px] font-bold tracking-tight text-slate-900 leading-tight">
+              <h2 className="text-[18px] font-semibold tracking-tight text-slate-900 leading-tight">
                 Programme Tasks
               </h2>
-              <span className="rounded-full bg-blue-50 border border-blue-200/60 px-2 py-0.5 text-[10.5px] font-bold text-blue-700">
-                WBS Grid
-              </span>
             </div>
-            <span className="text-[12px] font-medium text-slate-500 mt-0.5">
+            <span className="text-[12px] text-slate-400 mt-0.5">
               Ormiston Rise – Building 2 & Unit 80
             </span>
           </div>
@@ -761,7 +758,7 @@ export function ListView() {
             placeholder="Search tasks, WBS, or assignees..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-9 pr-14 text-[12.5px] text-slate-800 placeholder:text-slate-400 shadow-2xs transition-all focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-100"
+            className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50/70 pl-9 pr-14 text-[12.5px] text-slate-800 placeholder:text-slate-400 transition-all focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
           {searchQuery ? (
             <button
@@ -771,7 +768,7 @@ export function ListView() {
               <X className="h-3.5 w-3.5" />
             </button>
           ) : (
-            <div className="pointer-events-none absolute right-2.5 flex items-center rounded-md border border-slate-200/80 bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-400 shadow-2xs">
+            <div className="pointer-events-none absolute right-2.5 flex items-center rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-400">
               ⌘ K
             </div>
           )}
@@ -779,7 +776,7 @@ export function ListView() {
 
         {/* Right: Filter Dropdowns + Add Task Button */}
         <div className="flex items-center gap-2">
-          {/* Status Filter ▾ */}
+          {/* Status Filter ▾: 36px (h-9) */}
           <div className="relative">
             <button
               onClick={() => {
@@ -789,9 +786,9 @@ export function ListView() {
                 setMoreFiltersOpen(false);
                 setAddTaskDropdownOpen(false);
               }}
-              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[12.5px] font-medium shadow-2xs transition-colors ${
+              className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12px] font-medium transition-colors ${
                 selectedStatus !== "All Statuses"
-                  ? "border-blue-400 bg-blue-50 text-blue-700 font-semibold"
+                  ? "border-blue-300 bg-blue-50 text-blue-700 font-semibold"
                   : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
               }`}
             >
@@ -799,7 +796,7 @@ export function ListView() {
               <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
             </button>
             {statusFilterOpen && (
-              <div className="absolute right-0 top-full mt-1.5 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100">
+              <div className="absolute right-0 top-full mt-1.5 w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-md z-50 animate-in fade-in zoom-in-95 duration-100">
                 {["All Statuses", "Complete", "In Progress", "Not Started", "Blocked"].map(
                   (s) => (
                     <button
@@ -808,7 +805,7 @@ export function ListView() {
                         setSelectedStatus(s);
                         setStatusFilterOpen(false);
                       }}
-                      className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-[12px] transition-colors ${
+                      className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-[12px] transition-colors ${
                         selectedStatus === s
                           ? "bg-blue-50 text-blue-700 font-semibold"
                           : "text-slate-700 hover:bg-slate-50"
@@ -829,7 +826,7 @@ export function ListView() {
             )}
           </div>
 
-          {/* Trade Filter ▾ */}
+          {/* Trade Filter ▾: 36px (h-9) */}
           <div className="relative">
             <button
               onClick={() => {
@@ -839,9 +836,9 @@ export function ListView() {
                 setMoreFiltersOpen(false);
                 setAddTaskDropdownOpen(false);
               }}
-              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[12.5px] font-medium shadow-2xs transition-colors ${
+              className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12px] font-medium transition-colors ${
                 selectedTrade !== "All Trades"
-                  ? "border-blue-400 bg-blue-50 text-blue-700 font-semibold"
+                  ? "border-blue-300 bg-blue-50 text-blue-700 font-semibold"
                   : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
               }`}
             >
@@ -849,7 +846,7 @@ export function ListView() {
               <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
             </button>
             {tradeFilterOpen && (
-              <div className="absolute right-0 top-full mt-1.5 w-48 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100">
+              <div className="absolute right-0 top-full mt-1.5 w-48 rounded-lg border border-slate-200 bg-white p-1 shadow-md z-50 animate-in fade-in zoom-in-95 duration-100">
                 {["All Trades", "Management", "Civils", "M&E", "Structural", "Façade"].map(
                   (t) => (
                     <button
@@ -858,7 +855,7 @@ export function ListView() {
                         setSelectedTrade(t);
                         setTradeFilterOpen(false);
                       }}
-                      className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-[12px] transition-colors ${
+                      className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-[12px] transition-colors ${
                         selectedTrade === t
                           ? "bg-blue-50 text-blue-700 font-semibold"
                           : "text-slate-700 hover:bg-slate-50"
@@ -878,7 +875,7 @@ export function ListView() {
             )}
           </div>
 
-          {/* Assignee Filter ▾ */}
+          {/* Assignee Filter ▾: 36px (h-9) */}
           <div className="relative">
             <button
               onClick={() => {
@@ -888,9 +885,9 @@ export function ListView() {
                 setMoreFiltersOpen(false);
                 setAddTaskDropdownOpen(false);
               }}
-              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[12.5px] font-medium shadow-2xs transition-colors ${
+              className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12px] font-medium transition-colors ${
                 selectedAssignee !== "All Assignees"
-                  ? "border-blue-400 bg-blue-50 text-blue-700 font-semibold"
+                  ? "border-blue-300 bg-blue-50 text-blue-700 font-semibold"
                   : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
               }`}
             >
@@ -898,7 +895,7 @@ export function ListView() {
               <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
             </button>
             {assigneeFilterOpen && (
-              <div className="absolute right-0 top-full mt-1.5 w-52 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100">
+              <div className="absolute right-0 top-full mt-1.5 w-52 rounded-lg border border-slate-200 bg-white p-1 shadow-md z-50 animate-in fade-in zoom-in-95 duration-100">
                 {[
                   "All Assignees",
                   "John Smith",
@@ -914,7 +911,7 @@ export function ListView() {
                       setSelectedAssignee(a);
                       setAssigneeFilterOpen(false);
                     }}
-                    className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-[12px] transition-colors ${
+                    className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-[12px] transition-colors ${
                       selectedAssignee === a
                         ? "bg-blue-50 text-blue-700 font-semibold"
                         : "text-slate-700 hover:bg-slate-50"
@@ -928,7 +925,7 @@ export function ListView() {
             )}
           </div>
 
-          {/* More filters ▾ */}
+          {/* More filters ▾: 36px (h-9) */}
           <div className="relative">
             <button
               onClick={() => {
@@ -938,9 +935,9 @@ export function ListView() {
                 setAssigneeFilterOpen(false);
                 setAddTaskDropdownOpen(false);
               }}
-              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[12.5px] font-medium shadow-2xs transition-colors ${
+              className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12px] font-medium transition-colors ${
                 criticalOnly || moreFiltersOpen
-                  ? "border-blue-400 bg-blue-50 text-blue-700"
+                  ? "border-blue-300 bg-blue-50 text-blue-700"
                   : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
               }`}
             >
@@ -949,9 +946,9 @@ export function ListView() {
             </button>
 
             {moreFiltersOpen && (
-              <div className="absolute right-0 top-full mt-1.5 w-60 rounded-xl border border-slate-200 bg-white p-3 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100 text-[12px]">
+              <div className="absolute right-0 top-full mt-1.5 w-60 rounded-lg border border-slate-200 bg-white p-3 shadow-md z-50 animate-in fade-in zoom-in-95 duration-100 text-[12px]">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-2">
-                  <span className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">
+                  <span className="font-semibold text-slate-800 uppercase tracking-wider text-[11px]">
                     Table View Options
                   </span>
                   {hasActiveFilters && (
@@ -988,7 +985,7 @@ export function ListView() {
                       onClick={() => setDensity("comfortable")}
                       className={`py-1 rounded-md text-[11.5px] font-medium transition-colors ${
                         density === "comfortable"
-                          ? "bg-white text-slate-900 shadow-2xs font-semibold"
+                          ? "bg-white text-slate-900 shadow-xs font-semibold"
                           : "text-slate-600 hover:text-slate-900"
                       }`}
                     >
@@ -998,7 +995,7 @@ export function ListView() {
                       onClick={() => setDensity("compact")}
                       className={`py-1 rounded-md text-[11.5px] font-medium transition-colors ${
                         density === "compact"
-                          ? "bg-white text-slate-900 shadow-2xs font-semibold"
+                          ? "bg-white text-slate-900 shadow-xs font-semibold"
                           : "text-slate-600 hover:text-slate-900"
                       }`}
                     >
@@ -1011,13 +1008,13 @@ export function ListView() {
                 <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5">
                   <button
                     onClick={expandAll}
-                    className="flex-1 rounded-lg border border-slate-200 bg-slate-50 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+                    className="flex-1 rounded border border-slate-200 bg-slate-50 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
                   >
                     Expand All
                   </button>
                   <button
                     onClick={collapseAll}
-                    className="flex-1 rounded-lg border border-slate-200 bg-slate-50 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+                    className="flex-1 rounded border border-slate-200 bg-slate-50 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
                   >
                     Collapse All
                   </button>
@@ -1030,7 +1027,7 @@ export function ListView() {
           {hasActiveFilters && (
             <button
               onClick={resetAllFilters}
-              className="inline-flex items-center gap-1 rounded-xl bg-slate-100 hover:bg-slate-200 px-2 py-1.5 text-[11.5px] font-medium text-slate-600 transition-colors"
+              className="inline-flex h-9 items-center gap-1 rounded-lg bg-slate-100 hover:bg-slate-200 px-2.5 text-[11.5px] font-medium text-slate-600 transition-colors"
               title="Clear all active filters"
             >
               <X className="h-3.5 w-3.5" />
@@ -1039,21 +1036,21 @@ export function ListView() {
           )}
 
           {/* Divider */}
-          <div className="h-6 w-px bg-slate-200 mx-0.5" />
+          <div className="h-5 w-px bg-slate-200 mx-0.5" />
 
-          {/* + Add Task ▾ (Solid navy/black dropdown button) */}
+          {/* + Add Task ▾ (Primary CTA: solid blue, 36px) */}
           <div className="relative">
             <button
               onClick={() => setAddTaskDropdownOpen(!addTaskDropdownOpen)}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-black px-3.5 py-1.5 text-[12.5px] font-semibold text-white shadow-xs transition-colors active:scale-[0.98]"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 px-3.5 text-[12.5px] font-medium text-white transition-colors cursor-pointer"
             >
               <Plus className="h-4 w-4" />
               <span>Add Task</span>
-              <ChevronDown className="h-3.5 w-3.5 text-slate-400 ml-0.5" />
+              <ChevronDown className="h-3.5 w-3.5 text-blue-200 ml-0.5" />
             </button>
 
             {addTaskDropdownOpen && (
-              <div className="absolute right-0 top-full mt-1.5 w-48 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100">
+              <div className="absolute right-0 top-full mt-1.5 w-48 rounded-lg border border-slate-200 bg-white p-1 shadow-md z-50 animate-in fade-in zoom-in-95 duration-100">
                 <button
                   onClick={() => {
                     const name = prompt("Enter task title:");
@@ -1105,7 +1102,7 @@ export function ListView() {
       </div>
 
       {/* ─── 2. Table Column Headers with Icons & Rigid Proportions ──── */}
-      <div className="flex shrink-0 items-center border-b border-slate-200 bg-slate-50/95 px-3 py-2 text-[11.5px] font-bold text-slate-500 uppercase tracking-wider sticky top-0 z-10">
+      <div className="flex h-11 shrink-0 items-center border-b border-slate-200 bg-white px-3 text-[12px] font-semibold text-slate-500 sticky top-0 z-10">
         {/* Checkbox column */}
         <div className="w-10 shrink-0 flex items-center justify-center">
           <input
@@ -1445,9 +1442,9 @@ export function ListView() {
                                   selectTask(task.id);
                                   openDrawer(task.id);
                                 }}
-                                className={`group flex items-center px-3 ${taskRowPy} cursor-pointer transition-all border-l-3 ${
+                                className={`group flex items-center px-3 ${taskRowPy} cursor-pointer transition-all border-l-2 ${
                                   isSelected
-                                    ? "bg-blue-50/70 border-blue-600"
+                                    ? "bg-blue-50/80 border-blue-600 font-medium"
                                     : "bg-white hover:bg-slate-50/90 border-transparent"
                                 }`}
                               >
@@ -1475,8 +1472,8 @@ export function ListView() {
                                   {/* Task icon */}
                                   {getTaskIcon(task.wbs)}
 
-                                  {/* Task Name */}
-                                  <span className="text-[12.5px] text-slate-800 font-medium group-hover:text-blue-600 transition-colors truncate">
+                                  {/* Task Name: 14px / 600 */}
+                                  <span className="text-[14px] text-slate-800 font-medium group-hover:text-blue-600 transition-colors truncate">
                                     {task.name}
                                   </span>
 

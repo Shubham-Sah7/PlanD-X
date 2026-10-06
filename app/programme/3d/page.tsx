@@ -967,71 +967,49 @@ export default function Model3DPage() {
               )}
             </div>
 
-            {/* ─── TOP-CENTRE: MODEL TOOLBAR (3D | 2D | Top | Section | Fit) (Requirement 8) ─── */}
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center border border-slate-200/90 bg-white/95 backdrop-blur-md rounded-sm shadow-xs overflow-hidden">
-              {[
-                { id: "3d", label: "3D", icon: Box, onClick: () => { setViewMode("3d"); setSectionMode(false); }, active: viewMode === "3d" && !sectionMode, title: "Perspective 3D View" },
-                { id: "2d", label: "2D", icon: Square, onClick: () => { setViewMode("2d"); setSectionMode(false); }, active: viewMode === "2d", title: "Elevation / 2D View" },
-                { id: "top", label: "Top", icon: Navigation, onClick: () => { setViewMode("top"); setSectionMode(false); }, active: viewMode === "top", title: "Top-down Plan View" },
-                { id: "sec", label: "Section", icon: Layers, onClick: () => setSectionMode((s) => !s), active: sectionMode, title: "Section Cut at Active Level" },
-                { id: "fit", label: "Fit", icon: Maximize2, onClick: handleFit, active: false, title: "Fit Building to Viewport" },
-              ].map((btn) => (
-                <button
-                  key={btn.id}
-                  onClick={btn.onClick}
-                  title={btn.title}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium transition-colors border-r border-slate-100 last:border-r-0 ${
-                    btn.active
-                      ? "bg-blue-600 text-white font-semibold"
-                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                  }`}
-                >
-                  <btn.icon className="h-3.5 w-3.5" />
-                  <span>{btn.label}</span>
-                </button>
-              ))}
-            </div>
-
-            {sectionMode && (
-              <div className="absolute top-12 left-1/2 -translate-x-1/2 z-20 rounded-xs border border-blue-200 bg-blue-50/95 backdrop-blur-md px-2.5 py-0.5 text-[9.5px] font-semibold text-blue-700 font-mono shadow-xs">
-                Section Cut: {selectedLevel}
-              </div>
-            )}
-
-            {/* Top-Right Quick Camera Actions */}
-            <div className="absolute top-3 right-3 z-20 flex items-center border border-slate-200 bg-white rounded-sm shadow-xs overflow-hidden">
-              <button
-                onClick={handleReset}
-                title="Reset Camera (R)"
-                className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 border-r border-slate-100 transition-colors"
-              >
-                <RotateCcw className="h-3 w-3" />
-                <span>Reset</span>
-              </button>
-              <button
-                onClick={handleSnapshot}
-                title="Capture 3D Snapshot"
-                className="flex items-center px-2 py-1 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-colors"
-              >
-                <Camera className="h-3.5 w-3.5" />
-              </button>
-            </div>
-
-            {/* ─── BOTTOM-CENTRE: Integrated Camera / Navigation Toolbar ─── */}
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1 pointer-events-none">
-              <div className="flex items-center border border-slate-200 bg-white rounded-sm shadow-sm overflow-hidden pointer-events-auto">
+            {/* ─── TOP-CENTRE: UNIFIED 3D CONTROL SYSTEM (View controls · Navigation · Status legend) (Point 9) ─── */}
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center h-8 border border-slate-200 bg-white/95 backdrop-blur-md rounded-md shadow-xs px-2 text-[11.5px] select-none max-w-full">
+              {/* 1. View Controls */}
+              <div className="flex items-center gap-0.5">
                 {[
-                  { label: "Orbit", icon: Crosshair, active: dragMode === "orbit", onClick: () => setDragMode("orbit"), title: "Orbit (Left drag)" },
-                  { label: "Pan", icon: Hand, active: dragMode === "pan", onClick: () => setDragMode("pan"), title: "Pan (Left drag)" },
+                  { id: "3d", label: "3D", icon: Box, onClick: () => { setViewMode("3d"); setSectionMode(false); }, active: viewMode === "3d" && !sectionMode, title: "Perspective 3D View" },
+                  { id: "2d", label: "2D", icon: Square, onClick: () => { setViewMode("2d"); setSectionMode(false); }, active: viewMode === "2d", title: "Elevation / 2D View" },
+                  { id: "top", label: "Top", icon: Navigation, onClick: () => { setViewMode("top"); setSectionMode(false); }, active: viewMode === "top", title: "Top-down Plan View" },
+                  { id: "sec", label: "Section", icon: Layers, onClick: () => setSectionMode((s) => !s), active: sectionMode, title: "Section Cut at Active Level" },
+                ].map((btn) => (
+                  <button
+                    key={btn.id}
+                    onClick={btn.onClick}
+                    title={btn.title}
+                    className={`flex items-center gap-1 px-2 h-6 rounded font-medium transition-colors ${
+                      btn.active
+                        ? "bg-blue-600 text-white font-semibold"
+                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                    }`}
+                  >
+                    <btn.icon className="h-3.5 w-3.5" />
+                    <span>{btn.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Divider */}
+              <div className="h-4 w-[1px] bg-slate-200 mx-2 shrink-0" />
+
+              {/* 2. Navigation */}
+              <div className="flex items-center gap-0.5">
+                {[
+                  { label: "Orbit", icon: Crosshair, active: dragMode === "orbit", onClick: () => setDragMode("orbit"), title: "Orbit (Left Drag)" },
+                  { label: "Pan", icon: Hand, active: dragMode === "pan", onClick: () => setDragMode("pan"), title: "Pan (Left Drag)" },
                 ].map((btn) => (
                   <button
                     key={btn.label}
                     onClick={btn.onClick}
                     title={btn.title}
-                    className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium transition-colors border-r border-slate-100 ${
+                    className={`flex items-center gap-1 px-2 h-6 rounded font-medium transition-colors ${
                       btn.active
-                        ? "bg-blue-600 text-white font-semibold"
-                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                        ? "bg-slate-800 text-white font-semibold"
+                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                     }`}
                   >
                     <btn.icon className="h-3.5 w-3.5" />
@@ -1042,21 +1020,21 @@ export default function Model3DPage() {
                 <button
                   onClick={handleZoomIn}
                   title="Zoom In"
-                  className="flex items-center justify-center px-2 py-1 text-slate-600 hover:bg-slate-50 hover:text-slate-900 border-r border-slate-100 transition-colors"
+                  className="flex items-center justify-center w-6 h-6 rounded text-slate-600 hover:bg-slate-100 transition-colors"
                 >
                   <ZoomIn className="h-3.5 w-3.5" />
                 </button>
                 <button
                   onClick={handleZoomOut}
                   title="Zoom Out"
-                  className="flex items-center justify-center px-2 py-1 text-slate-600 hover:bg-slate-50 hover:text-slate-900 border-r border-slate-100 transition-colors"
+                  className="flex items-center justify-center w-6 h-6 rounded text-slate-600 hover:bg-slate-100 transition-colors"
                 >
                   <ZoomOut className="h-3.5 w-3.5" />
                 </button>
                 <button
                   onClick={handleFit}
-                  title="Fit Building to View"
-                  className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 border-r border-slate-100 transition-colors"
+                  title="Fit Building to Viewport"
+                  className="flex items-center gap-1 px-2 h-6 rounded font-medium text-slate-600 hover:bg-slate-100 transition-colors"
                 >
                   <Maximize2 className="h-3 w-3" />
                   <span>Fit</span>
@@ -1064,7 +1042,7 @@ export default function Model3DPage() {
                 <button
                   onClick={handleReset}
                   title="Reset Camera View"
-                  className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 border-r border-slate-100 transition-colors"
+                  className="flex items-center gap-1 px-2 h-6 rounded font-medium text-slate-600 hover:bg-slate-100 transition-colors"
                 >
                   <RotateCcw className="h-3 w-3" />
                   <span>Reset</span>
@@ -1072,96 +1050,40 @@ export default function Model3DPage() {
                 <button
                   onClick={handleSnapshot}
                   title="Capture 3D Snapshot"
-                  className="flex items-center justify-center px-2 py-1 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-colors"
+                  className="flex items-center justify-center w-6 h-6 rounded text-slate-500 hover:bg-slate-100 transition-colors"
                 >
                   <Camera className="h-3.5 w-3.5" />
                 </button>
               </div>
 
-              {/* Minimal Keyboard / Interaction Helper */}
-              <div className="text-[9.5px] text-slate-400 font-mono">
-                Esc to deselect · Double-click element to focus
+              {/* Divider */}
+              <div className="h-4 w-[1px] bg-slate-200 mx-2 shrink-0" />
+
+              {/* 3. Status Legend */}
+              <div className="hidden xl:flex items-center gap-2.5 px-1 text-[11px] font-medium text-slate-600">
+                <div className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  <span>Complete</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                  <span>In Progress</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                  <span>Blocked</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                  <span>Not Started</span>
+                </div>
               </div>
             </div>
 
-            {/* ─── BOTTOM-LEFT: Minimal Collapsible Legend ─── */}
-            {showLegend ? (
-              <div className="absolute bottom-3 left-3 z-20 border border-slate-200 bg-white/95 px-2.5 py-1.5 rounded-xs shadow-xs">
-                <div className="flex items-center justify-between gap-3 mb-1">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-                    {visMode === "schedule" ? "Schedule" : visMode === "progress" ? "Progress" : "Status"}
-                  </span>
-                  <button
-                    onClick={() => setShowLegend(false)}
-                    className="text-[9px] text-slate-400 hover:text-slate-600 transition-colors"
-                  >
-                    hide
-                  </button>
-                </div>
-                <div className="space-y-0.5">
-                  {visMode === "schedule" ? (
-                    <>
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-[1px] bg-emerald-500 shrink-0" />
-                        <span className="text-[9.5px] text-slate-600 font-medium">On Time</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-[1px] bg-amber-500 shrink-0" />
-                        <span className="text-[9.5px] text-slate-600 font-medium">At Risk (-1 to -2d)</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-[1px] bg-red-500 shrink-0" />
-                        <span className="text-[9.5px] text-slate-600 font-medium">Delayed ({">"}2d)</span>
-                      </div>
-                    </>
-                  ) : visMode === "progress" ? (
-                    <>
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-[1px] bg-emerald-500 shrink-0" />
-                        <span className="text-[9.5px] text-slate-600 font-medium">100% Complete</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-[1px] bg-blue-600 shrink-0" />
-                        <span className="text-[9.5px] text-slate-600 font-medium">50% - 99%</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-[1px] bg-blue-400 shrink-0" />
-                        <span className="text-[9.5px] text-slate-600 font-medium">1% - 49%</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-[1px] bg-slate-300 shrink-0" />
-                        <span className="text-[9.5px] text-slate-600 font-medium">0% Not Started</span>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      {[
-                        { color: "bg-emerald-500", label: "Completed" },
-                        { color: "bg-blue-500",    label: "In Progress" },
-                        { color: "bg-red-500",     label: "Blocked" },
-                        { color: "bg-slate-300",   label: "Not Started" },
-                        { color: "bg-amber-500",   label: "Milestone" },
-                      ].map((item) => (
-                        <div key={item.label} className="flex items-center gap-1.5">
-                          <span className={`w-1.5 h-1.5 rounded-[1px] shrink-0 ${item.color}`} />
-                          <span className="text-[9.5px] text-slate-600 font-medium">{item.label}</span>
-                        </div>
-                      ))}
-                      <div className="flex items-center gap-1.5 pt-0.5 border-t border-slate-100">
-                        <span className="w-2.5 h-0.5 bg-red-500 shrink-0" />
-                        <span className="text-[9.5px] text-slate-600 font-medium">Critical Path</span>
-                      </div>
-                    </>
-                  )}
-                </div>
+            {sectionMode && (
+              <div className="absolute top-12 left-1/2 -translate-x-1/2 z-20 rounded-md border border-blue-200 bg-blue-50/95 backdrop-blur-md px-2.5 py-0.5 text-[10px] font-medium text-blue-700 font-mono shadow-xs">
+                Section Cut: {selectedLevel}
               </div>
-            ) : (
-              <button
-                onClick={() => setShowLegend(true)}
-                className="absolute bottom-3 left-3 z-20 border border-slate-200 bg-white px-2 py-0.5 text-[9.5px] font-medium text-slate-500 hover:text-slate-800 rounded-xs shadow-xs transition-colors"
-              >
-                Legend
-              </button>
             )}
           </div>
 

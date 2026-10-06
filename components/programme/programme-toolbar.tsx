@@ -73,8 +73,8 @@ export function ProgrammeToolbar() {
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 mb-3.5 select-none">
-      {/* Left: View Switcher */}
-      <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-1 shadow-2xs">
+      {/* Left: View Switcher (Strict 36px height) */}
+      <div className="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white p-0.5">
         {VIEWS.map((v) => {
           const Icon = v.icon;
           const isActive = state.activeView === v.id;
@@ -82,9 +82,9 @@ export function ProgrammeToolbar() {
             <button
               key={v.id}
               onClick={() => setActiveView(v.id)}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-all ${
+              className={`flex h-8 items-center gap-1.5 rounded px-3 text-[13px] font-medium transition-colors ${
                 isActive
-                  ? "bg-blue-600 text-white shadow-2xs font-semibold"
+                  ? "bg-blue-600 text-white font-semibold"
                   : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
               }`}
             >
@@ -95,9 +95,9 @@ export function ProgrammeToolbar() {
         })}
         <button
           onClick={() => setActiveView("3d")}
-          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-all ${
+          className={`flex h-8 items-center gap-1.5 rounded px-3 text-[13px] font-medium transition-colors ${
             state.activeView === "3d"
-              ? "bg-blue-600 text-white shadow-2xs font-semibold"
+              ? "bg-blue-600 text-white font-semibold"
               : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
           }`}
         >
@@ -106,9 +106,9 @@ export function ProgrammeToolbar() {
         </button>
       </div>
 
-      {/* Right: Controls (Dynamic per view) */}
+      {/* Right: Controls (Dynamic per view - All strict 36px height) */}
       {isCalendar ? (
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           {/* All Trades ▾ */}
           <div className="relative">
             <button
@@ -118,13 +118,13 @@ export function ProgrammeToolbar() {
                 setAssigneeDropdownOpen(false);
                 setFilterPanelOpen(false);
               }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[12.5px] font-medium text-slate-700 shadow-2xs hover:bg-slate-50 transition-colors"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-[12.5px] font-medium text-slate-700 hover:bg-slate-50 transition-colors"
             >
               <span>{calendarTrade}</span>
               <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
             </button>
             {tradeDropdownOpen && (
-              <div className="absolute right-0 top-full mt-1.5 w-48 rounded-lg border border-slate-200 bg-white p-1.5 shadow-lg z-50">
+              <div className="absolute right-0 top-full mt-1 w-48 rounded-md border border-slate-200 bg-white p-1 shadow-md z-50">
                 {["All Trades", "Superstructure", "Substructure", "Groundworks", "M&E", "Quality Control", "Finishes", "External Works"].map((t) => (
                   <button
                     key={t}
@@ -132,7 +132,7 @@ export function ProgrammeToolbar() {
                       setCalendarTrade(t);
                       setTradeDropdownOpen(false);
                     }}
-                    className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-[12.5px] ${
+                    className={`flex w-full items-center justify-between rounded px-2.5 py-1.5 text-[12.5px] ${
                       calendarTrade === t ? "bg-blue-50 text-blue-700 font-medium" : "text-slate-700 hover:bg-slate-50"
                     }`}
                   >
@@ -153,13 +153,13 @@ export function ProgrammeToolbar() {
                 setAssigneeDropdownOpen(false);
                 setFilterPanelOpen(false);
               }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[12.5px] font-medium text-slate-700 shadow-2xs hover:bg-slate-50 transition-colors"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-[12.5px] font-medium text-slate-700 hover:bg-slate-50 transition-colors"
             >
               <span>{calendarStatus}</span>
               <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
             </button>
             {statusDropdownOpen && (
-              <div className="absolute right-0 top-full mt-1.5 w-44 rounded-lg border border-slate-200 bg-white p-1.5 shadow-lg z-50">
+              <div className="absolute right-0 top-full mt-1 w-44 rounded-md border border-slate-200 bg-white p-1 shadow-md z-50">
                 {["All Statuses", "Complete", "In Progress", "Blocked", "Not Started"].map((s) => (
                   <button
                     key={s}
@@ -167,7 +167,7 @@ export function ProgrammeToolbar() {
                       setCalendarStatus(s);
                       setStatusDropdownOpen(false);
                     }}
-                    className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-[12.5px] ${
+                    className={`flex w-full items-center justify-between rounded px-2.5 py-1.5 text-[12.5px] ${
                       calendarStatus === s ? "bg-blue-50 text-blue-700 font-medium" : "text-slate-700 hover:bg-slate-50"
                     }`}
                   >
@@ -188,13 +188,13 @@ export function ProgrammeToolbar() {
                 setStatusDropdownOpen(false);
                 setFilterPanelOpen(false);
               }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[12.5px] font-medium text-slate-700 shadow-2xs hover:bg-slate-50 transition-colors"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-[12.5px] font-medium text-slate-700 hover:bg-slate-50 transition-colors"
             >
               <span>{calendarAssignee}</span>
               <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
             </button>
             {assigneeDropdownOpen && (
-              <div className="absolute right-0 top-full mt-1.5 w-48 rounded-lg border border-slate-200 bg-white p-1.5 shadow-lg z-50">
+              <div className="absolute right-0 top-full mt-1 w-48 rounded-md border border-slate-200 bg-white p-1 shadow-md z-50">
                 {["All Assignees", "EC (Emma Campbell)", "PT (Peter Taylor)", "Main Contractor", "Apex Groundworks"].map((a) => (
                   <button
                     key={a}
@@ -202,7 +202,7 @@ export function ProgrammeToolbar() {
                       setCalendarAssignee(a);
                       setAssigneeDropdownOpen(false);
                     }}
-                    className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-[12.5px] ${
+                    className={`flex w-full items-center justify-between rounded px-2.5 py-1.5 text-[12.5px] ${
                       calendarAssignee === a ? "bg-blue-50 text-blue-700 font-medium" : "text-slate-700 hover:bg-slate-50"
                     }`}
                   >
@@ -223,7 +223,7 @@ export function ProgrammeToolbar() {
                 setStatusDropdownOpen(false);
                 setAssigneeDropdownOpen(false);
               }}
-              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] font-medium shadow-2xs transition-colors ${
+              className={`inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-[12.5px] font-medium transition-colors ${
                 filterPanelOpen
                   ? "border-blue-400 bg-blue-50 text-blue-700"
                   : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
@@ -498,18 +498,18 @@ export function ProgrammeToolbar() {
           </button>
         </div>
       ) : (
-        <div className="flex items-center gap-2.5">
-          {/* Zoom Level Toggle */}
-          <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-1 shadow-2xs">
+        <div className="flex items-center gap-2">
+          {/* Zoom Level Toggle (Strict 36px height) */}
+          <div className="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white p-0.5">
             {ZOOM_LEVELS.map((z) => {
               const isActive = state.zoomLevel === z.id;
               return (
                 <button
                   key={z.id}
                   onClick={() => setZoomLevel(z.id)}
-                  className={`rounded-md px-2.5 py-1 text-[12.5px] font-medium transition-colors ${
+                  className={`h-8 rounded px-2.5 text-[12.5px] font-medium transition-colors ${
                     isActive
-                      ? "bg-blue-50 text-blue-600 font-semibold shadow-2xs"
+                      ? "bg-blue-50 text-blue-700 font-semibold"
                       : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
                   }`}
                 >
@@ -519,17 +519,17 @@ export function ProgrammeToolbar() {
             })}
           </div>
 
-          {/* Date Range Navigation */}
-          <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white shadow-2xs text-[12.5px] font-medium text-slate-700">
+          {/* Date Range Navigation (Strict 36px height) */}
+          <div className="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white text-[12.5px] font-medium text-slate-700">
             <button
               onClick={() =>
                 setDateRangeIndex((prev) => Math.max(0, prev - 1))
               }
-              className="flex h-8 w-8 items-center justify-center rounded-l-lg hover:bg-slate-50 text-slate-500 hover:text-slate-800 transition-colors"
+              className="flex h-9 w-8 items-center justify-center rounded-l-md hover:bg-slate-50 text-slate-500 hover:text-slate-800 transition-colors"
             >
-              <ChevronLeft className="h-3.5 w-3.5" />
+              <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="px-3 font-semibold text-slate-700 whitespace-nowrap">
+            <span className="px-3 font-medium text-slate-700 whitespace-nowrap">
               {dateRanges[dateRangeIndex]}
             </span>
             <button
@@ -538,17 +538,17 @@ export function ProgrammeToolbar() {
                   Math.min(dateRanges.length - 1, prev + 1),
                 )
               }
-              className="flex h-8 w-8 items-center justify-center rounded-r-lg hover:bg-slate-50 text-slate-500 hover:text-slate-800 transition-colors"
+              className="flex h-9 w-8 items-center justify-center rounded-r-md hover:bg-slate-50 text-slate-500 hover:text-slate-800 transition-colors"
             >
-              <ChevronRight className="h-3.5 w-3.5" />
+              <ChevronRight className="h-4 w-4" />
             </button>
           </div>
 
-          {/* Filters Button */}
+          {/* Filters Button (Strict 36px height) */}
           <div className="relative">
             <button
               onClick={() => setFilterPanelOpen(!filterPanelOpen)}
-              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[13px] font-medium shadow-2xs transition-colors ${
+              className={`inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-[13px] font-medium transition-colors ${
                 filterPanelOpen
                   ? "border-blue-400 bg-blue-50 text-blue-700"
                   : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
@@ -560,7 +560,7 @@ export function ProgrammeToolbar() {
 
             {/* Filter Dropdown */}
             {filterPanelOpen && (
-              <div className="absolute right-0 top-full mt-1.5 w-64 rounded-lg border border-slate-200 bg-white p-3 shadow-lg z-50">
+              <div className="absolute right-0 top-full mt-1 w-64 rounded-md border border-slate-200 bg-white p-3 shadow-lg z-50">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                   <span className="text-[12px] font-semibold text-slate-800 uppercase tracking-wider">
                     Quick Filters
@@ -594,10 +594,10 @@ export function ProgrammeToolbar() {
             )}
           </div>
 
-          {/* Quick Search Toggle */}
+          {/* Quick Search Toggle (Strict 36px height) */}
           <button
             onClick={() => setSearchOpen(!searchOpen)}
-            className={`flex h-8 w-8 items-center justify-center rounded-lg border shadow-2xs transition-colors ${
+            className={`flex h-9 w-9 items-center justify-center rounded-md border transition-colors ${
               searchOpen
                 ? "border-blue-400 bg-blue-50 text-blue-600"
                 : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
@@ -607,7 +607,7 @@ export function ProgrammeToolbar() {
             <Search className="h-4 w-4" />
           </button>
 
-          {/* Fullscreen Expand */}
+          {/* Fullscreen Expand (Strict 36px height) */}
           <button
             onClick={() => {
               if (!document.fullscreenElement) {
@@ -616,7 +616,7 @@ export function ProgrammeToolbar() {
                 document.exitFullscreen().catch(() => {});
               }
             }}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-2xs hover:bg-slate-50 transition-colors"
+            className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors"
             title="Toggle fullscreen"
           >
             <Maximize2 className="h-3.5 w-3.5" />

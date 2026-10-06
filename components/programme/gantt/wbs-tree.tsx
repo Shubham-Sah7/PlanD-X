@@ -120,21 +120,21 @@ export function WBSTree({ tasks }: { tasks: ProgrammeTask[] }) {
               onClick={() => selectTask(task.id)}
               className={`group flex h-10 items-center px-3 text-[13px] transition-colors cursor-pointer ${
                 isPhase
-                  ? "bg-slate-50/90 hover:bg-slate-100/90 text-slate-900 border-l-3 border-transparent"
+                  ? "bg-slate-50/90 hover:bg-slate-100/90 text-slate-900 border-l-2 border-transparent"
                   : isWorkPackage
-                  ? "bg-white hover:bg-slate-50 text-slate-800 border-l-3 border-transparent"
+                  ? "bg-white hover:bg-slate-50 text-slate-800 border-l-2 border-transparent"
                   : isSelected
-                  ? "bg-blue-50/90 font-medium text-blue-950 border-l-3 border-blue-600 shadow-2xs"
-                  : "bg-white hover:bg-slate-50 text-slate-700 border-l-3 border-transparent"
+                  ? "bg-blue-50/80 font-medium text-blue-950 border-l-2 border-blue-600"
+                  : "bg-white hover:bg-slate-50 text-slate-700 border-l-2 border-transparent"
               }`}
             >
               {/* # Index column */}
               <div
-                className={`w-9 shrink-0 text-left pl-0.5 font-mono text-[11px] truncate ${
+                className={`w-9 shrink-0 text-left pl-0.5 font-mono text-[12px] truncate ${
                   isPhase
-                    ? "font-bold text-slate-700"
+                    ? "font-semibold text-slate-700"
                     : isWorkPackage
-                    ? "font-semibold text-slate-600"
+                    ? "font-medium text-slate-600"
                     : "text-slate-400 font-medium"
                 }`}
               >
@@ -184,16 +184,16 @@ export function WBSTree({ tasks }: { tasks: ProgrammeTask[] }) {
                   <IconComponent className="h-4 w-4" />
                 </div>
 
-                {/* Task Name */}
+                {/* Task Name: 14px / 600 */}
                 <span
                   className={`truncate ${
                     isPhase
-                      ? "font-bold text-slate-900 text-[12.5px] uppercase tracking-wide"
+                      ? "font-semibold text-slate-900 text-[14px] uppercase tracking-wide"
                       : isWorkPackage
-                      ? "font-semibold text-slate-800 text-[12.5px]"
+                      ? "font-semibold text-slate-800 text-[14px]"
                       : isSelected
-                      ? "font-semibold text-blue-900"
-                      : "font-normal text-slate-700"
+                      ? "font-semibold text-blue-900 text-[14px]"
+                      : "font-normal text-slate-700 text-[14px]"
                   }`}
                 >
                   {task.name}
@@ -202,12 +202,12 @@ export function WBSTree({ tasks }: { tasks: ProgrammeTask[] }) {
                 {/* Task Count Badge */}
                 {task.taskCount ? (
                   <span
-                    className={`ml-auto mr-0.5 shrink-0 rounded-full px-1.5 py-0.2 text-[9.5px] font-semibold transition-colors ${
+                    className={`ml-auto mr-0.5 shrink-0 rounded px-1.5 py-0.2 text-[10px] font-medium transition-colors ${
                       isPhase
                         ? "bg-slate-200 text-slate-700"
                         : isSelected
                         ? "bg-blue-200/80 text-blue-800"
-                        : "bg-slate-100 text-slate-500 group-hover:bg-slate-200/80"
+                        : "bg-slate-100 text-slate-400 group-hover:bg-slate-200/80"
                     }`}
                   >
                     {task.taskCount}
@@ -215,13 +215,13 @@ export function WBSTree({ tasks }: { tasks: ProgrammeTask[] }) {
                 ) : null}
               </div>
 
-              {/* Start Date */}
-              <div className="w-[74px] shrink-0 text-center text-[11px] text-slate-500 font-mono">
+              {/* Start Date: 12px secondary */}
+              <div className="w-[74px] shrink-0 text-center text-[12px] text-slate-400 font-mono">
                 {formatDisplayDate(task.displayStart)}
               </div>
 
-              {/* Finish Date */}
-              <div className="w-[74px] shrink-0 text-center text-[11px] text-slate-500 font-mono">
+              {/* Finish Date: 12px secondary */}
+              <div className="w-[74px] shrink-0 text-center text-[12px] text-slate-400 font-mono">
                 {formatDisplayDate(task.displayEnd)}
               </div>
 

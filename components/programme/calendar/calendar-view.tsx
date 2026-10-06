@@ -343,7 +343,7 @@ function DottedProgressBar({
 }
 
 export function CalendarView() {
-  const { openDrawer, selectTask } = useProgramme();
+  const { state, openDrawer, selectTask } = useProgramme();
 
   // View mode: "board" (Kanban daily tasks matching reference) or "month" (monthly grid)
   const [subView, setSubView] = useState<CalendarSubView>("board");
@@ -394,8 +394,8 @@ export function CalendarView() {
       tags: [
         { label: "site-task", bgClass: "bg-blue-100/90", textClass: "text-blue-800" },
       ],
-      bgClass: "bg-[#edf5ff]",
-      borderClass: "border-blue-200/70",
+      bgClass: "bg-white",
+      borderClass: "border-slate-200",
       dotActiveColor: "bg-blue-600",
       progress: 0,
       assignees: [{ name: "John Smith", initials: "JS", avatarBg: "bg-blue-600" }],
@@ -409,15 +409,15 @@ export function CalendarView() {
   };
 
   return (
-    <div className="flex flex-col flex-1 h-full w-full rounded-2xl border border-slate-200/70 bg-gradient-to-tr from-[#f8fafc] via-[#faf5ff]/20 to-[#fff1f2]/20 p-5 shadow-2xs overflow-hidden select-none">
+    <div className="flex flex-col flex-1 h-full w-full rounded-xl border border-slate-200 bg-white p-5 overflow-hidden select-none">
       {/* 1. Sub-Header: Month/Date, Board-Daily Tasks dropdown, Avatars, Filters, + Create task */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-200/60 shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-200 shrink-0">
         {/* Left: Month title & date */}
         <div className="flex flex-col">
-          <h2 className="text-[22px] font-bold tracking-tight text-slate-900 leading-tight">
+          <h2 className="text-[18px] font-semibold tracking-tight text-slate-900 leading-tight">
             May
           </h2>
-          <span className="text-[12px] font-medium text-slate-500 mt-0.5">
+          <span className="text-[12px] text-slate-400 mt-0.5">
             Today is Saturday, Jul 9th, 2023 · Building 2 & Unit 80
           </span>
         </div>
@@ -426,7 +426,7 @@ export function CalendarView() {
         <div className="relative">
           <button
             onClick={() => setViewDropdownOpen(!viewDropdownOpen)}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white/95 px-3.5 py-1.5 text-[13px] font-semibold text-slate-700 shadow-2xs backdrop-blur-md hover:bg-white transition-colors"
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 text-[12px] font-medium text-slate-700 hover:bg-slate-50 transition-colors"
           >
             <span>
               {subView === "board"
@@ -439,13 +439,13 @@ export function CalendarView() {
           </button>
 
           {viewDropdownOpen && (
-            <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1.5 w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg z-50">
+            <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1.5 w-56 rounded-lg border border-slate-200 bg-white p-1 shadow-md z-50">
               <button
                 onClick={() => {
                   setSubView("board");
                   setViewDropdownOpen(false);
                 }}
-                className={`flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-[12.5px] transition-colors ${
+                className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-[12px] transition-colors ${
                   subView === "board"
                     ? "bg-blue-50 font-semibold text-blue-700"
                     : "text-slate-700 hover:bg-slate-50"
@@ -459,7 +459,7 @@ export function CalendarView() {
                   setSubView("month");
                   setViewDropdownOpen(false);
                 }}
-                className={`flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-[12.5px] transition-colors ${
+                className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-[12px] transition-colors ${
                   subView === "month"
                     ? "bg-blue-50 font-semibold text-blue-700"
                     : "text-slate-700 hover:bg-slate-50"
@@ -473,7 +473,7 @@ export function CalendarView() {
                   setSubView("week");
                   setViewDropdownOpen(false);
                 }}
-                className={`flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-[12.5px] transition-colors ${
+                className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-[12px] transition-colors ${
                   subView === "week"
                     ? "bg-blue-50 font-semibold text-blue-700"
                     : "text-slate-700 hover:bg-slate-50"
@@ -499,7 +499,7 @@ export function CalendarView() {
                     setSelectedAssignee(isSelected ? null : m.initials)
                   }
                   title={`${m.name} (${m.role})`}
-                  className={`relative h-7 w-7 rounded-full ring-2 ring-white flex items-center justify-center text-[10px] font-bold text-white shadow-2xs transition-transform hover:scale-110 hover:z-20 ${
+                  className={`relative h-7 w-7 rounded-full ring-2 ring-white flex items-center justify-center text-[10px] font-bold text-white transition-transform hover:scale-110 hover:z-20 ${
                     m.bg
                   } ${isSelected ? "ring-blue-600 scale-110 z-20" : ""}`}
                 >
@@ -512,10 +512,10 @@ export function CalendarView() {
           {/* Filters Button */}
           <button
             onClick={() => setFilterPanelOpen(!filterPanelOpen)}
-            className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[12.5px] font-semibold shadow-2xs transition-colors ${
+            className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12px] font-medium transition-colors ${
               filterPanelOpen
-                ? "border-blue-400 bg-blue-50 text-blue-700"
-                : "border-slate-200/80 bg-white text-slate-700 hover:bg-slate-50"
+                ? "border-blue-300 bg-blue-50 text-blue-700"
+                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
             }`}
           >
             <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
@@ -528,7 +528,7 @@ export function CalendarView() {
               setNewTaskColumn("today");
               setCreateModalOpen(true);
             }}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-1.5 text-[12.5px] font-semibold text-white shadow-xs hover:bg-black transition-colors"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 px-3.5 text-[12.5px] font-medium text-white transition-colors cursor-pointer"
           >
             <Plus className="h-4 w-4" />
             <span>Create task</span>
@@ -575,42 +575,59 @@ export function CalendarView() {
                 </div>
 
                 {/* Column Cards */}
-                <div className="space-y-3.5">
-                  {colTasks.map((task) => (
-                    <div
-                      key={task.id}
-                      onClick={() => {
-                        selectTask(task.id);
-                        openDrawer(task.id);
-                      }}
-                      className={`group rounded-2xl border p-4 shadow-2xs hover:shadow-sm hover:-translate-y-0.5 transition-all cursor-pointer ${task.bgClass} ${task.borderClass}`}
-                    >
-                      {/* Top Row: Tag Pills + Action Menu */}
-                      <div className="flex items-center justify-between gap-1.5 mb-2.5">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {task.tags.map((tag) => (
-                            <span
-                              key={tag.label}
-                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold tracking-tight ${tag.bgClass} ${tag.textClass}`}
-                            >
-                              #{tag.label}
-                            </span>
-                          ))}
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                          }}
-                          className="text-slate-400 hover:text-slate-600 p-0.5 rounded"
-                        >
-                          <MoreVertical className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                <div className="space-y-2.5">
+                  {colTasks.map((task) => {
+                    const isSelected = state.selectedTaskId === task.id;
+                    const isOverdue = task.columnId === "overdue";
+                    const isBlocked = task.columnId === "blocked";
 
-                      {/* Task Title */}
-                      <h4 className="font-bold text-[13.5px] leading-snug text-slate-900 mb-2">
-                        {task.title}
-                      </h4>
+                    return (
+                      <div
+                        key={task.id}
+                        onClick={() => {
+                          selectTask(task.id);
+                          openDrawer(task.id);
+                        }}
+                        className={`group rounded-lg border p-3 transition-colors cursor-pointer bg-white ${
+                          isSelected
+                            ? "border-blue-600 ring-1 ring-blue-500 bg-blue-50/30"
+                            : isOverdue
+                            ? "border-red-200 hover:border-red-300"
+                            : isBlocked
+                            ? "border-amber-200 hover:border-amber-300"
+                            : "border-slate-200 hover:border-slate-300"
+                        }`}
+                      >
+                        {/* Top Row: Clean Semantic Status / Trade Badges */}
+                        <div className="flex items-center justify-between gap-1.5 mb-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {task.tags.map((tag) => {
+                              const isUrgent = tag.label.includes("overdue") || tag.label.includes("blocked");
+                              return (
+                                <span
+                                  key={tag.label}
+                                  className={`rounded px-1.5 py-0.5 text-[10.5px] font-medium capitalize ${
+                                    isUrgent
+                                      ? "bg-red-50 text-red-700 border border-red-200"
+                                      : "bg-slate-100 text-slate-700"
+                                  }`}
+                                >
+                                  {tag.label.replace("#", "")}
+                                </span>
+                              );
+                            })}
+                          </div>
+                          {task.dueDate && (
+                            <span className={`text-[11px] font-mono ${isOverdue ? "text-red-600 font-semibold" : "text-slate-400"}`}>
+                              {task.dueDate}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Task Title */}
+                        <h4 className="font-semibold text-[13.5px] leading-snug text-slate-900 mb-1.5">
+                          {task.title}
+                        </h4>
 
                       {/* Optional Thumbnail Image Preview (Matching Image) */}
                       {task.imagePreview && (
@@ -670,22 +687,27 @@ export function CalendarView() {
                         </div>
                       )}
 
-                      {/* Dotted Progress Bar */}
-                      <div className="mt-2.5 pt-1 border-t border-black/5">
-                        <DottedProgressBar
-                          progress={task.progress}
-                          activeClass={task.dotActiveColor}
-                        />
+                      {/* Progress Bar (Color by urgency/status) */}
+                      <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-100">
+                        <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${
+                              isOverdue ? "bg-red-500" : isBlocked ? "bg-amber-500" : task.progress === 100 ? "bg-emerald-500" : "bg-blue-600"
+                            }`}
+                            style={{ width: `${task.progress}%` }}
+                          />
+                        </div>
+                        <span className="font-mono text-[10px] text-slate-400 font-medium">{task.progress}%</span>
                       </div>
 
-                      {/* Footer: Overlapping Avatars + Counts */}
-                      <div className="flex items-center justify-between pt-3 mt-3 border-t border-black/5">
-                        {/* Overlapping Avatars */}
-                        <div className="flex items-center -space-x-1.5">
+                      {/* Footer: Assignees + Counts */}
+                      <div className="flex items-center justify-between pt-2 mt-1.5">
+                        {/* Assignees */}
+                        <div className="flex items-center -space-x-1">
                           {task.assignees.map((a) => (
                             <div
                               key={a.name}
-                              className={`h-5.5 w-5.5 rounded-full ring-2 ring-white flex items-center justify-center text-[8.5px] font-bold text-white ${a.avatarBg}`}
+                              className={`h-5 w-5 rounded-full ring-1 ring-white flex items-center justify-center text-[8.5px] font-semibold text-white ${a.avatarBg}`}
                               title={a.name}
                             >
                               {a.initials}
@@ -706,21 +728,22 @@ export function CalendarView() {
                         </div>
                       </div>
                     </div>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
-      )}
+            </div>
+          );
+        })}
+      </div>
+    )}
 
-      {/* 3. Monthly Calendar Grid (Accessible via Dropdown) */}
-      {subView === "month" && (
-        <div className="flex-1 rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs mt-4 overflow-y-auto">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-            <h3 className="font-bold text-[16px] text-slate-900">
-              August 2025 Schedule
-            </h3>
+    {/* 3. Monthly Calendar Grid (Accessible via Dropdown) */}
+    {subView === "month" && (
+      <div className="flex-1 rounded-xl border border-slate-200 bg-white p-4 mt-4 overflow-y-auto">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <h3 className="font-semibold text-[16px] text-slate-900">
+            August 2025 Schedule
+          </h3>
             <span className="text-[12px] text-slate-500 font-medium">
               31 Days Planned
             </span>

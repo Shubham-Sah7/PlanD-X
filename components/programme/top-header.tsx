@@ -51,10 +51,10 @@ export function TopHeader() {
           value={searchValue}
           onChange={handleSearchChange}
           placeholder="Search tasks, WBS, or people..."
-          className="w-full rounded-lg border border-slate-200 bg-slate-50/70 py-1.5 pl-9 pr-14 text-[13px] text-slate-800 placeholder-slate-400 transition-colors focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50/70 pl-9 pr-14 text-[13px] text-slate-800 placeholder-slate-400 transition-colors focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
         <div className="absolute inset-y-0 right-0 flex items-center pr-2.5">
-          <kbd className="inline-flex items-center rounded border border-slate-200 bg-white px-1.5 text-[10px] font-medium text-slate-400 shadow-2xs">
+          <kbd className="inline-flex items-center rounded border border-slate-200 bg-white px-1.5 text-[10px] font-medium text-slate-400">
             ⌘ K
           </kbd>
         </div>
@@ -63,26 +63,26 @@ export function TopHeader() {
       {/* Right: Date Navigation + Notifications + Avatar */}
       <div className="flex items-center gap-3">
         {/* Date Selector */}
-        <div className="flex items-center gap-1 text-[13px] font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-0.5">
+        <div className="flex h-9 items-center gap-1 text-[13px] font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-0.5">
           <span className="px-2.5 text-[12.5px] font-semibold text-slate-700">
             {currentDateLabel}
           </span>
           <button
             onClick={() => setCurrentDateLabel("Jul 2025")}
-            className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-white text-slate-500 hover:text-slate-800 transition-colors shadow-2xs"
+            className="flex h-7 w-7 items-center justify-center rounded hover:bg-white text-slate-500 hover:text-slate-800 transition-colors"
             title="Previous period"
           >
             <ChevronLeft className="h-3.5 w-3.5" />
           </button>
           <button
             onClick={() => setCurrentDateLabel("Aug 2025")}
-            className="px-2 py-1 text-[12px] font-medium rounded-md hover:bg-white text-slate-600 hover:text-slate-900 transition-colors shadow-2xs"
+            className="px-2 py-1 text-[12px] font-medium rounded hover:bg-white text-slate-600 hover:text-slate-900 transition-colors"
           >
             Today
           </button>
           <button
             onClick={() => setCurrentDateLabel("Sep 2025")}
-            className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-white text-slate-500 hover:text-slate-800 transition-colors shadow-2xs"
+            className="flex h-7 w-7 items-center justify-center rounded hover:bg-white text-slate-500 hover:text-slate-800 transition-colors"
             title="Next period"
           >
             <ChevronRight className="h-3.5 w-3.5" />

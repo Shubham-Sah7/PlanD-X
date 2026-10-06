@@ -21,7 +21,7 @@ export function GanttView() {
   }, [programme, state.expandedNodes, attentionFilter, state.filters.search]);
 
   return (
-    <div className="flex h-full w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
+    <div className="flex h-full w-full overflow-hidden rounded-xl border border-slate-200 bg-white">
       {/* Left Sticky WBS Hierarchy Table */}
       <WBSTree tasks={visibleTasks} />
 

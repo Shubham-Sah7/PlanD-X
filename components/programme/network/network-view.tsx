@@ -10,7 +10,7 @@ export function NetworkView() {
   const [wbsOpen, setWbsOpen] = useState(false);
 
   return (
-    <div className="flex h-full flex-col rounded-2xl border border-slate-200/80 bg-white shadow-2xs overflow-hidden select-none">
+    <div className="flex h-full flex-col rounded-xl border border-slate-200 bg-white overflow-hidden select-none">
       {/* Network Canvas Main Section */}
       <div className="relative flex flex-1 overflow-hidden min-h-0">
         {/* Toggleable WBS Structure Panel */}
@@ -24,7 +24,7 @@ export function NetworkView() {
         {/* Collapsible WBS rail tab on left */}
         <button
           onClick={() => setWbsOpen(!wbsOpen)}
-          className={`absolute left-0 top-20 z-20 flex items-center gap-1 rounded-r-lg border border-l-0 border-slate-200 bg-white/95 px-2 py-1.5 text-[11px] font-semibold text-slate-600 shadow-2xs backdrop-blur-md hover:bg-slate-50 hover:text-blue-600 transition-all ${
+          className={`absolute left-0 top-20 z-20 flex items-center gap-1 rounded-r-lg border border-l-0 border-slate-200 bg-white px-2 py-1.5 text-[11px] font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-600 transition-all ${
             wbsOpen ? "left-[230px]" : "left-0"
           }`}
           title={wbsOpen ? "Collapse WBS Structure" : "Expand WBS Structure"}

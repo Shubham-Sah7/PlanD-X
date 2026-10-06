@@ -694,13 +694,13 @@ export function NetworkCanvas() {
                       </div>
                     </div>
 
-                    {/* Task Title */}
-                    <div className="font-bold text-[12.5px] text-slate-900 truncate leading-snug mt-0.5">
+                    {/* Task Title: 14px / 600 */}
+                    <div className="font-semibold text-[14px] text-slate-900 truncate leading-snug mt-0.5">
                       {task.name}
                     </div>
 
                     {/* Duration & Progress text */}
-                    <div className="text-[10.5px] font-medium text-slate-400 mt-0.5">
+                    <div className="text-[12px] font-normal text-slate-400 mt-0.5">
                       {durationText}
                     </div>
                   </div>
@@ -719,9 +719,9 @@ export function NetworkCanvas() {
         </div>
       </div>
 
-      {/* 6. Focused Dependency Trace Bar (Requirement 5) */}
+      {/* 6. Focused Dependency Trace Bar: 36px (h-9) with subtle 1px border */}
       {selectedTaskObj && (
-        <div className="absolute top-18 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 rounded-lg border border-slate-200/90 bg-white/95 px-3.5 py-1.5 shadow-md backdrop-blur-md text-[12px] animate-in fade-in-50 duration-150 max-w-[90vw] overflow-x-auto">
+        <div className="absolute top-18 left-1/2 -translate-x-1/2 z-30 flex h-9 items-center gap-2.5 rounded-lg border border-slate-200 bg-white px-3 shadow-sm text-[12px] animate-in fade-in-50 duration-150 max-w-[90vw] overflow-x-auto">
           {/* Predecessors */}
           <div className="flex items-center gap-1.5 shrink-0">
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
@@ -735,21 +735,21 @@ export function NetworkCanvas() {
                     selectTask(p.id);
                     openDrawer(p.id);
                   }}
-                  className="flex items-center gap-1 rounded bg-slate-100 hover:bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:text-blue-700 transition-colors cursor-pointer"
+                  className="flex items-center gap-1 rounded bg-slate-100 hover:bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:text-blue-700 transition-colors cursor-pointer"
                   title={`Predecessor: ${p.name}`}
                 >
                   <span>{p.id}</span>
                 </button>
               ))
             ) : (
-              <span className="text-[10.5px] text-slate-400 italic">None (Start)</span>
+              <span className="text-[11px] text-slate-400 italic">None (Start)</span>
             )}
           </div>
 
           <span className="text-slate-300 font-bold shrink-0">➔</span>
 
           {/* Selected Task */}
-          <div className="flex items-center gap-1.5 rounded bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-blue-900 font-bold shrink-0">
+          <div className="flex items-center gap-1.5 rounded bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-blue-900 font-semibold shrink-0">
             <span className="font-mono text-[11px]">{selectedTaskObj.id}</span>
             <span className="truncate max-w-[140px]">{selectedTaskObj.name}</span>
           </div>
@@ -769,14 +769,14 @@ export function NetworkCanvas() {
                     selectTask(s.id);
                     openDrawer(s.id);
                   }}
-                  className="flex items-center gap-1 rounded bg-slate-100 hover:bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:text-blue-700 transition-colors cursor-pointer"
+                  className="flex items-center gap-1 rounded bg-slate-100 hover:bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:text-blue-700 transition-colors cursor-pointer"
                   title={`Successor: ${s.name}`}
                 >
                   <span>{s.id}</span>
                 </button>
               ))
             ) : (
-              <span className="text-[10.5px] text-slate-400 italic">None (Finish)</span>
+              <span className="text-[11px] text-slate-400 italic">None (Finish)</span>
             )}
           </div>
 
@@ -791,9 +791,9 @@ export function NetworkCanvas() {
         </div>
       )}
 
-      {/* 7. Overview (Minimap) Widget (Bottom Left) matching reference image */}
+      {/* 7. Overview (Minimap) Widget: subtle 1px border and light shadow */}
       {showOverview && (
-        <div className="absolute bottom-4 left-4 z-20 rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-md backdrop-blur-md w-52 select-none">
+        <div className="absolute bottom-4 left-4 z-20 rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm w-52 select-none">
           {/* Header */}
           <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
             <span className="text-[11.5px] font-bold text-slate-800 tracking-tight">
@@ -843,40 +843,29 @@ export function NetworkCanvas() {
         </div>
       )}
 
-      {/* 7. Floating Navigation Controls Pill (Bottom Right) matching reference image */}
+      {/* 8. Floating Navigation Controls (Bottom Right): 32px compact controls */}
       <div className="absolute bottom-4 right-4 z-20 flex items-center gap-2">
         {!showOverview && (
           <button
             onClick={() => setShowOverview(true)}
-            className="rounded-full border border-slate-200/90 bg-white/95 px-3 py-1.5 text-[12px] font-semibold text-slate-700 shadow-sm backdrop-blur-md hover:bg-slate-50 transition-colors"
+            className="h-8 rounded-lg border border-slate-200 bg-white px-3 text-[12px] font-medium text-slate-700 shadow-sm hover:bg-slate-50 transition-colors"
           >
             Show Overview
           </button>
         )}
 
-        <div className="flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-white/95 px-3 py-1.5 shadow-sm backdrop-blur-md text-[12px] font-medium text-slate-700">
+        <div className="flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 shadow-sm text-[12px] font-medium text-slate-700">
           {/* Pan Toggle */}
           <button
             onClick={() => setPanModeActive(!panModeActive)}
-            className={`flex items-center gap-1 px-2 py-1 rounded-full text-[11.5px] transition-colors ${
+            className={`flex items-center gap-1 px-2 py-1 rounded text-[11.5px] transition-colors ${
               panModeActive
-                ? "bg-blue-50 font-bold text-blue-700"
+                ? "bg-blue-50 font-semibold text-blue-700"
                 : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
             }`}
           >
-            <Hand className="h-3 w-3" />
+            <Hand className="h-3.5 w-3.5" />
             <span>Pan</span>
-          </button>
-
-          <span className="h-3.5 w-px bg-slate-200" />
-
-          {/* Zoom Button */}
-          <button
-            onClick={handleZoomIn}
-            className="flex items-center gap-1 px-2 py-1 rounded-full text-[11.5px] text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
-          >
-            <Search className="h-3 w-3" />
-            <span>Zoom</span>
           </button>
 
           <span className="h-3.5 w-px bg-slate-200" />
@@ -885,20 +874,20 @@ export function NetworkCanvas() {
           <div className="flex items-center gap-1 px-1">
             <button
               onClick={handleZoomOut}
-              className="h-5 w-5 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-600 hover:text-slate-900 transition-colors"
+              className="h-6 w-6 rounded hover:bg-slate-100 flex items-center justify-center text-slate-600 hover:text-slate-900 transition-colors"
               title="Zoom out"
             >
-              <Minus className="h-3 w-3" />
+              <Minus className="h-3.5 w-3.5" />
             </button>
-            <span className="font-mono text-[11.5px] font-bold text-slate-800 w-10 text-center">
+            <span className="font-mono text-[11.5px] font-semibold text-slate-800 w-10 text-center">
               {networkZoom}%
             </span>
             <button
               onClick={handleZoomIn}
-              className="h-5 w-5 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-600 hover:text-slate-900 transition-colors"
+              className="h-6 w-6 rounded hover:bg-slate-100 flex items-center justify-center text-slate-600 hover:text-slate-900 transition-colors"
               title="Zoom in"
             >
-              <Plus className="h-3 w-3" />
+              <Plus className="h-3.5 w-3.5" />
             </button>
           </div>
 
@@ -907,9 +896,9 @@ export function NetworkCanvas() {
           {/* Fit */}
           <button
             onClick={handleResetZoom}
-            className="flex items-center gap-1 px-2 py-1 rounded-full text-[11.5px] text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+            className="flex items-center gap-1 px-2 py-1 rounded text-[11.5px] text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
           >
-            <Maximize2 className="h-3 w-3" />
+            <Maximize2 className="h-3.5 w-3.5" />
             <span>Fit</span>
           </button>
         </div>
