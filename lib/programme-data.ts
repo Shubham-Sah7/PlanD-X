@@ -2097,6 +2097,24 @@ export function getVisibleTasks(
       tasks = tasks.filter((t) => t.status === "blocked" || t.isBlocked);
     } else if (attentionFilter === "due-this-week") {
       tasks = tasks.filter((t) => t.isDueThisWeek);
+    } else if (attentionFilter === "critical") {
+      tasks = tasks.filter((t) => t.isCritical);
+    } else if (attentionFilter === "in-progress") {
+      tasks = tasks.filter((t) => t.status === "in-progress");
+    } else if (attentionFilter === "complete") {
+      tasks = tasks.filter((t) => t.status === "complete");
+    } else if (attentionFilter === "milestones") {
+      tasks = tasks.filter((t) => t.isMilestone);
+    } else if (attentionFilter === "level-1") {
+      tasks = tasks.filter((t) => t.name.toLowerCase().includes("level 1") || t.wbs.startsWith("1.1"));
+    } else if (attentionFilter === "level-2") {
+      tasks = tasks.filter((t) => t.name.toLowerCase().includes("level 2") || t.wbs.startsWith("1.2"));
+    } else if (attentionFilter === "level-3") {
+      tasks = tasks.filter((t) => t.name.toLowerCase().includes("level 3") || t.wbs.startsWith("1.3"));
+    } else if (attentionFilter === "level-4") {
+      tasks = tasks.filter((t) => t.name.toLowerCase().includes("level 4") || t.wbs.startsWith("1.4"));
+    } else if (attentionFilter === "roof") {
+      tasks = tasks.filter((t) => t.name.toLowerCase().includes("roof") || t.wbs.startsWith("1.5"));
     }
   }
 
