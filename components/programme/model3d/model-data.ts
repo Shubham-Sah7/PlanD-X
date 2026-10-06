@@ -3,12 +3,22 @@
 
 export type TaskStatus = "complete" | "in-progress" | "blocked" | "not-started";
 export type ElementType = "slab" | "columns" | "core" | "walls" | "beams" | "stairs" | "facade" | "plant" | "ground";
-export type BuildingLevel = "Roof" | "Level 4" | "Level 3" | "Level 2" | "Level 1" | "Ground";
+export type BuildingLevel = string; // Supports dynamic levels (Basement, Ground, Level 1..N, Mezzanine, Roof)
 export type TradeType = "Structural" | "M&E" | "Façade" | "Finishes" | "Civils" | "Management" | "Substructure" | "Design";
 export type ViewMode3D = "3d" | "2d" | "top";
 export type ElementFilter = "all" | "columns" | "slabs" | "walls" | "beams" | "core" | "stairs";
 export type NavMode = "levels" | "disciplines" | "work-packages";
 export type AttentionType = "blocked" | "overdue" | "critical" | "due-this-week";
+
+export type VisualizationMode =
+  | "status"        // Programme task status (Green = complete, Blue = in progress, Red = blocked, Slate = not started)
+  | "schedule"      // Schedule variance (Green = on-time, Amber = at-risk, Red = delayed)
+  | "progress"      // Progress % gradient (100% Emerald, 50-99% Royal Blue, 1-49% Light Blue, 0% Muted)
+  | "critical-path" // Isolate and highlight critical path, ghost non-critical work
+  | "upcoming"      // Upcoming 7/14 days site activities
+  | "baseline";     // Planned baseline vs current actual variance
+
+export type DisciplineType = "all" | "Structure" | "Architecture" | "MEP" | "Finishes";
 
 export interface DrawingRef {
   code: string;
@@ -43,6 +53,16 @@ export interface ModelElement {
   notes: string;
   phase: string;
   drawing?: DrawingRef;
+  // Spatial Programme Metadata
+  building?: string;
+  zone?: string;
+  discipline?: "Structure" | "Architecture" | "MEP" | "Finishes";
+  varianceDays?: number; // negative = delay, 0 = on-time, positive = ahead
+  isUpcoming?: boolean;
+  isMilestone?: boolean;
+  milestoneLabel?: string;
+  has3D?: boolean;
+  noTaskMapped?: boolean; // edge case: 3D geometry exists but no schedule task mapped
 }
 
 export interface TimelinePhase {
@@ -56,20 +76,108 @@ export interface TimelinePhase {
   level?: BuildingLevel;
 }
 
+export interface FloorConfig {
+  id: string;
+  name: string;
+  shortName: string;
+  elevation: number;
+  height: number;
+  isBasement?: boolean;
+  isRoof?: boolean;
+  isMezzanine?: boolean;
+  width?: number;
+  depth?: number;
+  zones: string[];
+  status: TaskStatus;
+  progress: number;
+  tasksCount: number;
+  delayedCount: number;
+  criticalCount: number;
+  tradeBreakdown?: {
+    structure: number;
+    architecture: number;
+    mep: number;
+    finishes: number;
+  };
+}
+
 export interface ProjectModelPreset {
   id: string;
   name: string;
   building: string;
-  category: "Residential" | "Commercial" | "Industrial" | "Healthcare";
+  category: "Residential" | "Commercial" | "Industrial" | "Healthcare" | "Villa";
   description: string;
-  levels: BuildingLevel[];
+  levels: string[];
+  floors: FloorConfig[];
+  zones: string[];
+  disciplines: string[];
+  buildings: string[];
   totalTasks: number;
   completePercent: number;
   overdueTasks: number;
   blockedTasks: number;
   dueThisWeek: number;
   forecast: string;
+  modelAvailable: boolean;
+  hasCrane?: boolean;
 }
+
+export interface SavedProgrammeView {
+  id: string;
+  name: string;
+  description: string;
+  level: string;
+  zone?: string;
+  discipline?: DisciplineType;
+  visMode: VisualizationMode;
+  sectionMode?: boolean;
+}
+
+export const SAVED_PROGRAMME_VIEWS: SavedProgrammeView[] = [
+  {
+    id: "view-default",
+    name: "Level 2 Active Superstructure",
+    description: "Active columns pour and core wall inspection on Level 2",
+    level: "Level 2",
+    visMode: "status",
+  },
+  {
+    id: "view-critical",
+    name: "Critical Path Inspection",
+    description: "Highlight only driving activities on the critical schedule path",
+    level: "Level 2",
+    visMode: "critical-path",
+  },
+  {
+    id: "view-delayed",
+    name: "Delayed & At-Risk Work",
+    description: "Identifies delayed areas (core wall pour sign-off hold point)",
+    level: "Level 2",
+    visMode: "schedule",
+  },
+  {
+    id: "view-lookahead",
+    name: "Upcoming 7 Days Lookahead",
+    description: "Site activities starting or due in the immediate 7-day lookahead window",
+    level: "Level 2",
+    visMode: "upcoming",
+  },
+  {
+    id: "view-progress",
+    name: "Overall Progress Heatmap",
+    description: "Gradient visualization from completed ground floor to future roof deck",
+    level: "Level 2",
+    visMode: "progress",
+  },
+  {
+    id: "view-structure",
+    name: "Structure Trade Programme",
+    description: "Isolates reinforced concrete columns, slabs, and core shear walls",
+    level: "Level 2",
+    discipline: "Structure",
+    visMode: "status",
+  },
+];
 
 export const PROJECT_PRESETS: ProjectModelPreset[] = [
   {
@@ -77,14 +185,121 @@ export const PROJECT_PRESETS: ProjectModelPreset[] = [
     name: "Ormiston Rise",
     building: "Building 2 & Unit 80",
     category: "Residential",
-    description: "Multi-storey residential apartment building with reinforced concrete structural frame.",
-    levels: ["Roof", "Level 4", "Level 3", "Level 2", "Level 1", "Ground"],
+    description: "Multi-storey residential apartment building with reinforced concrete structural frame and perimeter columns.",
+    levels: ["Roof", "Level 4", "Level 3", "Level 2", "Level 1", "Ground", "Basement 1"],
+    floors: [
+      {
+        id: "Roof",
+        name: "Roof Deck",
+        shortName: "RF",
+        elevation: 16.0,
+        height: 3.4,
+        isRoof: true,
+        zones: ["Roof Deck", "Plant Room", "Lift Overrun"],
+        status: "not-started",
+        progress: 0,
+        tasksCount: 24,
+        delayedCount: 0,
+        criticalCount: 1,
+        tradeBreakdown: { structure: 0, architecture: 0, mep: 0, finishes: 0 },
+      },
+      {
+        id: "Level 4",
+        name: "Level 4",
+        shortName: "L4",
+        elevation: 12.8,
+        height: 3.2,
+        zones: ["East Wing", "West Wing", "Central Core"],
+        status: "not-started",
+        progress: 0,
+        tasksCount: 38,
+        delayedCount: 0,
+        criticalCount: 2,
+        tradeBreakdown: { structure: 0, architecture: 0, mep: 0, finishes: 0 },
+      },
+      {
+        id: "Level 3",
+        name: "Level 3",
+        shortName: "L3",
+        elevation: 9.6,
+        height: 3.2,
+        zones: ["East Wing", "West Wing", "Central Core"],
+        status: "not-started",
+        progress: 0,
+        tasksCount: 46,
+        delayedCount: 0,
+        criticalCount: 3,
+        tradeBreakdown: { structure: 0, architecture: 0, mep: 0, finishes: 0 },
+      },
+      {
+        id: "Level 2",
+        name: "Level 2",
+        shortName: "L2",
+        elevation: 6.4,
+        height: 3.2,
+        zones: ["East Wing", "West Wing", "Central Core"],
+        status: "in-progress",
+        progress: 60,
+        tasksCount: 52,
+        delayedCount: 2,
+        criticalCount: 4,
+        tradeBreakdown: { structure: 60, architecture: 15, mep: 10, finishes: 0 },
+      },
+      {
+        id: "Level 1",
+        name: "Level 1",
+        shortName: "L1",
+        elevation: 3.2,
+        height: 3.2,
+        zones: ["East Wing", "West Wing", "Central Core"],
+        status: "complete",
+        progress: 100,
+        tasksCount: 48,
+        delayedCount: 0,
+        criticalCount: 0,
+        tradeBreakdown: { structure: 100, architecture: 85, mep: 75, finishes: 40 },
+      },
+      {
+        id: "Ground",
+        name: "Ground Floor",
+        shortName: "G",
+        elevation: 0,
+        height: 3.2,
+        zones: ["East Wing", "West Wing", "Central Core"],
+        status: "complete",
+        progress: 100,
+        tasksCount: 42,
+        delayedCount: 0,
+        criticalCount: 0,
+        tradeBreakdown: { structure: 100, architecture: 95, mep: 90, finishes: 80 },
+      },
+      {
+        id: "Basement 1",
+        name: "Basement 1",
+        shortName: "B1",
+        elevation: -3.2,
+        height: 3.2,
+        isBasement: true,
+        zones: ["Parking Bay A", "Plant Enclosure", "Substructure Core"],
+        status: "complete",
+        progress: 100,
+        tasksCount: 18,
+        delayedCount: 0,
+        criticalCount: 0,
+        tradeBreakdown: { structure: 100, architecture: 100, mep: 100, finishes: 100 },
+      },
+    ],
+    zones: ["East Wing", "West Wing", "Central Core"],
+    disciplines: ["Structure", "Architecture", "MEP", "Finishes"],
+    buildings: ["Building 2 & Unit 80"],
     totalTasks: 817,
     completePercent: 48,
     overdueTasks: 5,
     blockedTasks: 3,
     dueThisWeek: 12,
     forecast: "01 Sep 2025 – 15 Nov 2026",
+    modelAvailable: true,
+    hasCrane: true,
   },
   {
     id: "metro-tower",
@@ -92,41 +307,361 @@ export const PROJECT_PRESETS: ProjectModelPreset[] = [
     building: "Tower A & Podium",
     category: "Commercial",
     description: "Central commercial office tower with perimeter structural columns and jump-formed core.",
-    levels: ["Roof", "Level 4", "Level 3", "Level 2", "Level 1", "Ground"],
+    levels: ["Roof", "Level 4", "Level 3", "Level 2", "Level 1", "Ground", "Basement 1"],
+    floors: [
+      {
+        id: "Roof",
+        name: "Plant Penthouse",
+        shortName: "RF",
+        elevation: 16.0,
+        height: 3.5,
+        isRoof: true,
+        zones: ["Rooftop Plant", "BMS Chiller Deck"],
+        status: "not-started",
+        progress: 0,
+        tasksCount: 30,
+        delayedCount: 0,
+        criticalCount: 1,
+        tradeBreakdown: { structure: 0, architecture: 0, mep: 0, finishes: 0 },
+      },
+      {
+        id: "Level 4",
+        name: "Level 4 Office",
+        shortName: "L4",
+        elevation: 12.8,
+        height: 3.2,
+        zones: ["Tower Core", "Floorplate North", "Floorplate South"],
+        status: "not-started",
+        progress: 0,
+        tasksCount: 50,
+        delayedCount: 0,
+        criticalCount: 2,
+        tradeBreakdown: { structure: 0, architecture: 0, mep: 0, finishes: 0 },
+      },
+      {
+        id: "Level 3",
+        name: "Level 3 Office",
+        shortName: "L3",
+        elevation: 9.6,
+        height: 3.2,
+        zones: ["Tower Core", "Floorplate North", "Floorplate South"],
+        status: "not-started",
+        progress: 0,
+        tasksCount: 55,
+        delayedCount: 0,
+        criticalCount: 2,
+        tradeBreakdown: { structure: 0, architecture: 0, mep: 0, finishes: 0 },
+      },
+      {
+        id: "Level 2",
+        name: "Level 2 Office",
+        shortName: "L2",
+        elevation: 6.4,
+        height: 3.2,
+        zones: ["Tower Core", "Floorplate North", "Floorplate South"],
+        status: "in-progress",
+        progress: 35,
+        tasksCount: 65,
+        delayedCount: 3,
+        criticalCount: 4,
+        tradeBreakdown: { structure: 50, architecture: 10, mep: 15, finishes: 0 },
+      },
+      {
+        id: "Level 1",
+        name: "Level 1 Podium",
+        shortName: "L1",
+        elevation: 3.2,
+        height: 3.2,
+        zones: ["Podium Retail", "Tower Core", "Terrace"],
+        status: "complete",
+        progress: 100,
+        tasksCount: 70,
+        delayedCount: 0,
+        criticalCount: 0,
+        tradeBreakdown: { structure: 100, architecture: 80, mep: 70, finishes: 50 },
+      },
+      {
+        id: "Ground",
+        name: "Ground Lobby",
+        shortName: "G",
+        elevation: 0,
+        height: 3.2,
+        zones: ["Main Lobby", "Podium Retail", "Loading Bay"],
+        status: "complete",
+        progress: 100,
+        tasksCount: 80,
+        delayedCount: 0,
+        criticalCount: 0,
+        tradeBreakdown: { structure: 100, architecture: 90, mep: 85, finishes: 60 },
+      },
+      {
+        id: "Basement 1",
+        name: "Basement Parking",
+        shortName: "B1",
+        elevation: -3.2,
+        height: 3.2,
+        isBasement: true,
+        zones: ["Car Park", "End of Trip", "Electrical Substation"],
+        status: "complete",
+        progress: 100,
+        tasksCount: 35,
+        delayedCount: 0,
+        criticalCount: 0,
+        tradeBreakdown: { structure: 100, architecture: 100, mep: 95, finishes: 90 },
+      },
+    ],
+    zones: ["Tower Core", "Floorplate North", "Floorplate South", "Podium Retail"],
+    disciplines: ["Structure", "Architecture", "MEP", "Finishes"],
+    buildings: ["Tower A", "Podium"],
     totalTasks: 1240,
     completePercent: 32,
     overdueTasks: 8,
     blockedTasks: 4,
     dueThisWeek: 19,
     forecast: "15 Oct 2025 – 28 Feb 2027",
+    modelAvailable: true,
+    hasCrane: true,
   },
   {
     id: "apex-logistics",
     name: "Apex Logistics Hub",
     building: "Distribution Centre 1",
     category: "Industrial",
-    description: "High-bay industrial logistics warehouse with heavy slab and structural portal frames.",
+    description: "High-bay industrial logistics warehouse with heavy reinforced slab, portal frames, and office mezzanine.",
     levels: ["Roof", "Level 1", "Ground"],
+    floors: [
+      {
+        id: "Roof",
+        name: "High-Bay Roof Deck",
+        shortName: "RF",
+        elevation: 10.5,
+        height: 2.8,
+        isRoof: true,
+        zones: ["Solar Array Deck", "Smoke Vents"],
+        status: "not-started",
+        progress: 0,
+        tasksCount: 16,
+        delayedCount: 0,
+        criticalCount: 0,
+        tradeBreakdown: { structure: 0, architecture: 0, mep: 0, finishes: 0 },
+      },
+      {
+        id: "Level 1",
+        name: "Admin Mezzanine",
+        shortName: "L1",
+        elevation: 5.5,
+        height: 5.0,
+        isMezzanine: true,
+        zones: ["Office Mezzanine", "Control Centre"],
+        status: "in-progress",
+        progress: 55,
+        tasksCount: 28,
+        delayedCount: 1,
+        criticalCount: 2,
+        tradeBreakdown: { structure: 75, architecture: 40, mep: 35, finishes: 20 },
+      },
+      {
+        id: "Ground",
+        name: "Warehouse High-Bay Floor",
+        shortName: "G",
+        elevation: 0,
+        height: 5.5,
+        zones: ["High-bay Warehouse", "Loading Docks", "Dock Levelers"],
+        status: "complete",
+        progress: 100,
+        tasksCount: 45,
+        delayedCount: 0,
+        criticalCount: 0,
+        tradeBreakdown: { structure: 100, architecture: 90, mep: 70, finishes: 60 },
+      },
+    ],
+    zones: ["High-bay Warehouse", "Loading Docks", "Admin Mezzanine"],
+    disciplines: ["Structure", "Architecture", "MEP"],
+    buildings: ["Distribution Centre 1"],
     totalTasks: 410,
     completePercent: 65,
     overdueTasks: 2,
     blockedTasks: 1,
     dueThisWeek: 8,
     forecast: "01 Aug 2025 – 30 May 2026",
+    modelAvailable: true,
+    hasCrane: false,
   },
   {
     id: "civic-centre",
     name: "Civic Health & Education",
     building: "East Clinical Wing",
     category: "Healthcare",
-    description: "Mixed-use institutional medical facility with rigorous acoustic and services coordination.",
+    description: "Institutional clinical healthcare facility with specialized acoustic isolation and high-density services routing.",
     levels: ["Roof", "Level 3", "Level 2", "Level 1", "Ground"],
+    floors: [
+      {
+        id: "Roof",
+        name: "Roof Plant Deck",
+        shortName: "RF",
+        elevation: 13.0,
+        height: 3.0,
+        isRoof: true,
+        zones: ["Medical Gas Plant", "Air Handling Units"],
+        status: "not-started",
+        progress: 0,
+        tasksCount: 22,
+        delayedCount: 0,
+        criticalCount: 1,
+        tradeBreakdown: { structure: 0, architecture: 0, mep: 0, finishes: 0 },
+      },
+      {
+        id: "Level 3",
+        name: "Level 3 Inpatient",
+        shortName: "L3",
+        elevation: 9.6,
+        height: 3.4,
+        zones: ["Inpatient Ward", "Central Nurses Core"],
+        status: "not-started",
+        progress: 0,
+        tasksCount: 42,
+        delayedCount: 0,
+        criticalCount: 2,
+        tradeBreakdown: { structure: 0, architecture: 0, mep: 0, finishes: 0 },
+      },
+      {
+        id: "Level 2",
+        name: "Level 2 Theatres & Diagnostics",
+        shortName: "L2",
+        elevation: 6.4,
+        height: 3.2,
+        zones: ["Operating Theatres", "Sterile Core", "Recovery"],
+        status: "in-progress",
+        progress: 45,
+        tasksCount: 58,
+        delayedCount: 2,
+        criticalCount: 3,
+        tradeBreakdown: { structure: 65, architecture: 25, mep: 30, finishes: 10 },
+      },
+      {
+        id: "Level 1",
+        name: "Level 1 Consultations",
+        shortName: "L1",
+        elevation: 3.2,
+        height: 3.2,
+        zones: ["Outpatient Clinics", "Pathology Lab"],
+        status: "complete",
+        progress: 100,
+        tasksCount: 52,
+        delayedCount: 0,
+        criticalCount: 0,
+        tradeBreakdown: { structure: 100, architecture: 90, mep: 85, finishes: 70 },
+      },
+      {
+        id: "Ground",
+        name: "Ground Emergency & Triage",
+        shortName: "G",
+        elevation: 0,
+        height: 3.2,
+        zones: ["Emergency Intake", "Ambulance Bay", "Public Atrium"],
+        status: "complete",
+        progress: 100,
+        tasksCount: 60,
+        delayedCount: 0,
+        criticalCount: 0,
+        tradeBreakdown: { structure: 100, architecture: 95, mep: 90, finishes: 85 },
+      },
+    ],
+    zones: ["Clinical Inpatient", "Diagnostics Hub", "Public Atrium"],
+    disciplines: ["Structure", "Architecture", "MEP", "Finishes"],
+    buildings: ["East Clinical Wing"],
     totalTasks: 950,
     completePercent: 41,
     overdueTasks: 6,
     blockedTasks: 5,
     dueThisWeek: 14,
     forecast: "01 Sep 2025 – 10 Dec 2026",
+    modelAvailable: true,
+    hasCrane: true,
+  },
+  {
+    id: "palm-villa",
+    name: "Palm Luxury Villa",
+    building: "Main Residence",
+    category: "Villa",
+    description: "Two-storey luxury residential residence with open-span living pavilion and cantilevered concrete roof canopy.",
+    levels: ["Roof", "Level 1", "Ground"],
+    floors: [
+      {
+        id: "Roof",
+        name: "Roof Terrace",
+        shortName: "RF",
+        elevation: 6.6,
+        height: 2.8,
+        isRoof: true,
+        zones: ["Pergola Terrace", "Solar Canopy"],
+        status: "not-started",
+        progress: 0,
+        tasksCount: 12,
+        delayedCount: 0,
+        criticalCount: 1,
+        tradeBreakdown: { structure: 0, architecture: 0, mep: 0, finishes: 0 },
+      },
+      {
+        id: "Level 1",
+        name: "Level 1 Bedrooms",
+        shortName: "L1",
+        elevation: 3.4,
+        height: 3.2,
+        zones: ["Master Bedroom", "Balcony Wing"],
+        status: "in-progress",
+        progress: 40,
+        tasksCount: 22,
+        delayedCount: 1,
+        criticalCount: 2,
+        tradeBreakdown: { structure: 70, architecture: 35, mep: 25, finishes: 10 },
+      },
+      {
+        id: "Ground",
+        name: "Ground Living Pavilion",
+        shortName: "G",
+        elevation: 0,
+        height: 3.4,
+        zones: ["Living Room", "Courtyard Garden", "Poolside"],
+        status: "complete",
+        progress: 100,
+        tasksCount: 28,
+        delayedCount: 0,
+        criticalCount: 0,
+        tradeBreakdown: { structure: 100, architecture: 90, mep: 90, finishes: 80 },
+      },
+    ],
+    zones: ["Living Pavilion", "Master Suite", "Courtyard Garden"],
+    disciplines: ["Structure", "Architecture", "MEP", "Finishes"],
+    buildings: ["Main Residence"],
+    totalTasks: 215,
+    completePercent: 54,
+    overdueTasks: 1,
+    blockedTasks: 1,
+    dueThisWeek: 5,
+    forecast: "10 Nov 2025 – 20 Jun 2026",
+    modelAvailable: true,
+    hasCrane: false,
+  },
+  {
+    id: "project-no-bim",
+    name: "Harbour Point Works",
+    building: "Civil Works Package",
+    category: "Commercial",
+    description: "Civil infrastructure and seawall stabilization works without building geometry.",
+    levels: ["Ground"],
+    floors: [],
+    zones: ["Site Boundary", "Seawall"],
+    disciplines: ["Civils", "Substructure"],
+    buildings: ["Site Civils"],
+    totalTasks: 110,
+    completePercent: 20,
+    overdueTasks: 0,
+    blockedTasks: 0,
+    dueThisWeek: 3,
+    forecast: "01 Jan 2026 – 30 Aug 2026",
+    modelAvailable: false,
+    hasCrane: false,
   },
 ];
 
@@ -472,23 +1007,49 @@ export const PROGRAMME_STATS = {
   version: "Working Forecast",
 };
 
-// ─── Building Levels ──────────────────────────────────────────────────────────
+// ─── Building Levels & Lookups ───────────────────────────────────────────────
 
-export const LEVELS: BuildingLevel[] = ["Roof", "Level 4", "Level 3", "Level 2", "Level 1", "Ground"];
+export const LEVELS: BuildingLevel[] = [
+  "Roof",
+  "Level 4",
+  "Level 3",
+  "Level 2",
+  "Level 1",
+  "Ground",
+  "Basement 1",
+];
 
-export const LEVEL_ELEVATION: Record<BuildingLevel, number> = {
-  "Ground":  0,
-  "Level 1": 3.2,
-  "Level 2": 6.4,
-  "Level 3": 9.6,
-  "Level 4": 12.8,
-  "Roof":    16.0,
+export const LEVEL_ELEVATION: Record<string, number> = {
+  "Roof":        16.0,
+  "Level 5":     18.0,
+  "Level 4":     12.8,
+  "Level 3":      9.6,
+  "Level 2":      6.4,
+  "Level 1":      3.2,
+  "Mezzanine":    5.5,
+  "Ground":       0.0,
+  "Basement 1":  -3.2,
+  "Basement 2":  -6.4,
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+export function getFloorConfigForLevel(preset: ProjectModelPreset, levelName: string): FloorConfig | undefined {
+  return preset.floors.find((f) => f.id === levelName || f.name === levelName || f.shortName === levelName);
+}
+
 export function getElementsForLevel(level: BuildingLevel): ModelElement[] {
   return MODEL_ELEMENTS.filter((e) => e.level === level);
+}
+
+export function getElementsForZone(elements: ModelElement[], zone: string): ModelElement[] {
+  if (!zone || zone === "all") return elements;
+  return elements.filter((e) => e.zone === zone);
+}
+
+export function getElementsForDiscipline(elements: ModelElement[], discipline: DisciplineType): ModelElement[] {
+  if (!discipline || discipline === "all") return elements;
+  return elements.filter((e) => e.discipline === discipline);
 }
 
 export function getLevelStatus(level: BuildingLevel): TaskStatus {
@@ -511,5 +1072,6 @@ export function getElementsForPhase(phaseId: string): ModelElement[] {
 }
 
 export function formatDate(iso: string): string {
+  if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
