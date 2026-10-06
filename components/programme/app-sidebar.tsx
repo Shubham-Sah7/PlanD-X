@@ -76,13 +76,13 @@ export function AppSidebar() {
       {/* Brand Header */}
       <div className="flex h-14 items-center gap-3 px-5 border-b border-slate-200/80">
         <Link href="/programme" className="flex items-center gap-2.5 group">
-          <div className="relative flex h-7 w-7 items-center justify-center rounded-lg overflow-hidden shrink-0 shadow-xs transition-transform group-hover:scale-105">
+          <div className="relative flex h-8 w-8 items-center justify-center rounded-lg overflow-hidden shrink-0 shadow-xs transition-transform group-hover:scale-105">
             <Image
               src="/logo.png"
               alt="PlanD-X Logo"
-              width={28}
-              height={28}
-              className="h-full w-full object-contain"
+              width={32}
+              height={32}
+              className="h-full w-full object-contain rounded-lg"
               priority
             />
           </div>
