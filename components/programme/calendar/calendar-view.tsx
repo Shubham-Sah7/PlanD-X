@@ -42,9 +42,11 @@ interface AssigneeItem {
   avatarBg: string;
 }
 
+export type ScheduleColumnId = "overdue" | "blocked" | "today" | "due-soon" | "upcoming";
+
 interface KanbanTask {
   id: string;
-  columnId: "todo" | "in-progress" | "in-review" | "done";
+  columnId: ScheduleColumnId;
   title: string;
   tags: TagItem[];
   bgClass: string;
@@ -57,261 +59,249 @@ interface KanbanTask {
   assignees: AssigneeItem[];
   commentsCount: number;
   attachmentsCount: number;
+  dueDate?: string;
 }
 
 const INITIAL_BOARD_TASKS: KanbanTask[] = [
-  // COLUMN 1: Todo list
+  // COLUMN 1: Overdue
   {
-    id: "task-todo-1",
-    columnId: "todo",
-    title: "Ground beam rebar installation - North Zone",
+    id: "task-overdue-1",
+    columnId: "overdue",
+    title: "Level 1 - Core Wall Concrete 28-day Cube Testing Signoff",
     tags: [
-      { label: "structural", bgClass: "bg-blue-100/90", textClass: "text-blue-800" },
-      { label: "foundations", bgClass: "bg-blue-100/90", textClass: "text-blue-800" },
-    ],
-    bgClass: "bg-[#edf5ff]",
-    borderClass: "border-blue-200/70",
-    dotActiveColor: "bg-blue-600",
-    note: "Reinforcement delivery arriving Wednesday 08:30 AM",
-    progress: 40,
-    assignees: [
-      { name: "John Smith", initials: "JS", avatarBg: "bg-blue-600" },
-      { name: "Tom Harris", initials: "TH", avatarBg: "bg-emerald-600" },
-    ],
-    commentsCount: 12,
-    attachmentsCount: 8,
-  },
-  {
-    id: "task-todo-2",
-    columnId: "todo",
-    title: "Basement slab dual-layer waterproofing membrane",
-    tags: [
-      { label: "waterproofing", bgClass: "bg-purple-100/90", textClass: "text-purple-800" },
-      { label: "substructure", bgClass: "bg-purple-100/90", textClass: "text-purple-800" },
-    ],
-    bgClass: "bg-[#f5f0ff]",
-    borderClass: "border-purple-200/70",
-    dotActiveColor: "bg-purple-600",
-    checklist: [
-      { id: "c1", text: "Surface priming & substrate prep", done: true },
-      { id: "c2", text: "Dual-layer bituthene torch-on applied", done: true },
-      { id: "c3", text: "Perimeter toe fillet & waterstop fixed", done: false },
-      { id: "c4", text: "Flood test & hydrostatic signoff", done: false },
-    ],
-    note: "Specialist warranty inspector onsite at 14:00",
-    progress: 15,
-    assignees: [
-      { name: "Sarah Chen", initials: "SC", avatarBg: "bg-purple-600" },
-      { name: "David Wilson", initials: "DW", avatarBg: "bg-amber-600" },
-    ],
-    commentsCount: 7,
-    attachmentsCount: 2,
-  },
-  {
-    id: "task-todo-3",
-    columnId: "todo",
-    title: "Laser grid layout check before blockwork commencement",
-    tags: [
-      { label: "survey", bgClass: "bg-rose-100/90", textClass: "text-rose-800" },
-      { label: "qa-setout", bgClass: "bg-rose-100/90", textClass: "text-rose-800" },
+      { label: "structural", bgClass: "bg-red-100", textClass: "text-red-800" },
+      { label: "5d overdue", bgClass: "bg-red-200/90 font-bold", textClass: "text-red-900" },
     ],
     bgClass: "bg-[#fff1f2]",
-    borderClass: "border-rose-200/70",
-    dotActiveColor: "bg-rose-600",
-    note: "Total station benchmark recalibrated yesterday",
-    progress: 30,
+    borderClass: "border-red-200",
+    dotActiveColor: "bg-red-600",
+    note: "Waiting for certified lab break results from testing authority",
+    progress: 80,
+    assignees: [
+      { name: "John Smith", initials: "JS", avatarBg: "bg-blue-600" },
+      { name: "David Wilson", initials: "DW", avatarBg: "bg-amber-600" },
+    ],
+    commentsCount: 9,
+    attachmentsCount: 4,
+    dueDate: "28 Feb 2026",
+  },
+  {
+    id: "task-overdue-2",
+    columnId: "overdue",
+    title: "Basement dual-layer bituthene waterproofing inspection",
+    tags: [
+      { label: "waterproofing", bgClass: "bg-red-100", textClass: "text-red-800" },
+      { label: "2d overdue", bgClass: "bg-red-200/90 font-bold", textClass: "text-red-900" },
+    ],
+    bgClass: "bg-[#fff1f2]",
+    borderClass: "border-red-200",
+    dotActiveColor: "bg-red-600",
+    checklist: [
+      { id: "c1", text: "Substrate priming & perimeter toe fillet", done: true },
+      { id: "c2", text: "Hydrostatic flood test inspection", done: false },
+    ],
+    note: "Specialist warranty inspector delayed on transit",
+    progress: 60,
     assignees: [
       { name: "Sarah Chen", initials: "SC", avatarBg: "bg-purple-600" },
     ],
-    commentsCount: 12,
-    attachmentsCount: 8,
+    commentsCount: 6,
+    attachmentsCount: 2,
+    dueDate: "03 Mar 2026",
   },
 
-  // COLUMN 2: In Progress
+  // COLUMN 2: Blocked
   {
-    id: "task-columns",
-    columnId: "in-progress",
-    title: "Level 2 - Columns Formwork & Pour #4",
+    id: "task-blocked-1",
+    columnId: "blocked",
+    title: "Piling mat construction - North Grid A-D",
     tags: [
-      { label: "structural", bgClass: "bg-amber-100/90", textClass: "text-amber-800" },
-      { label: "columns", bgClass: "bg-amber-100/90", textClass: "text-amber-800" },
+      { label: "groundworks", bgClass: "bg-amber-100", textClass: "text-amber-800" },
+      { label: "blocked: rig", bgClass: "bg-red-100 font-bold", textClass: "text-red-800" },
     ],
     bgClass: "bg-[#fffbeb]",
-    borderClass: "border-amber-200/80",
+    borderClass: "border-amber-200",
     dotActiveColor: "bg-amber-600",
+    note: "Holding on CFA piling rig mobilisation (PRG-011)",
+    progress: 0,
+    assignees: [
+      { name: "Tom Harris", initials: "TH", avatarBg: "bg-emerald-600" },
+      { name: "John Smith", initials: "JS", avatarBg: "bg-blue-600" },
+    ],
+    commentsCount: 14,
+    attachmentsCount: 3,
+    dueDate: "08 Mar 2026",
+  },
+  {
+    id: "task-blocked-2",
+    columnId: "blocked",
+    title: "Level 2 Core Wall Reinforcement Fixing",
+    tags: [
+      { label: "structural", bgClass: "bg-amber-100", textClass: "text-amber-800" },
+      { label: "rfi #104", bgClass: "bg-purple-100", textClass: "text-purple-800" },
+    ],
+    bgClass: "bg-[#fffbeb]",
+    borderClass: "border-amber-200",
+    dotActiveColor: "bg-amber-600",
+    note: "Structural engineer rebar congestion clarification pending",
+    progress: 25,
+    assignees: [
+      { name: "Sarah Chen", initials: "SC", avatarBg: "bg-purple-600" },
+      { name: "Ryan Wilson", initials: "RW", avatarBg: "bg-rose-600" },
+    ],
+    commentsCount: 8,
+    attachmentsCount: 5,
+    dueDate: "12 Mar 2026",
+  },
+
+  // COLUMN 3: Today & This Week
+  {
+    id: "task-columns",
+    columnId: "today",
+    title: "Level 2 - Columns Formwork & Pour #4",
+    tags: [
+      { label: "structural", bgClass: "bg-blue-100", textClass: "text-blue-800" },
+      { label: "pour: 14:00", bgClass: "bg-emerald-100 font-bold", textClass: "text-emerald-800" },
+    ],
+    bgClass: "bg-[#eff6ff]",
+    borderClass: "border-blue-200",
+    dotActiveColor: "bg-blue-600",
     imagePreview: "/bim-hero-clean.jpg",
-    note: "Have to finish this pour before weekend weather",
+    note: "Ready mix concrete batching approved. Pour scheduled today.",
     progress: 90,
     assignees: [
       { name: "John Smith", initials: "JS", avatarBg: "bg-blue-600" },
       { name: "Tom Harris", initials: "TH", avatarBg: "bg-emerald-600" },
       { name: "David Wilson", initials: "DW", avatarBg: "bg-amber-600" },
     ],
-    commentsCount: 6,
-    attachmentsCount: 1,
+    commentsCount: 16,
+    attachmentsCount: 6,
+    dueDate: "Today",
   },
   {
-    id: "task-prog-2",
-    columnId: "in-progress",
-    title: "Tower crane erection & load calibration certificate",
+    id: "task-today-2",
+    columnId: "today",
+    title: "Tower crane #1 monthly proof test & load calibration",
     tags: [
-      { label: "crane", bgClass: "bg-emerald-100/90", textClass: "text-emerald-800" },
-      { label: "logistics", bgClass: "bg-emerald-100/90", textClass: "text-emerald-800" },
+      { label: "logistics", bgClass: "bg-emerald-100", textClass: "text-emerald-800" },
+      { label: "safety", bgClass: "bg-blue-100", textClass: "text-blue-800" },
     ],
-    bgClass: "bg-[#ecfdf5]",
-    borderClass: "border-emerald-200/70",
+    bgClass: "bg-[#f0fdf4]",
+    borderClass: "border-emerald-200",
     dotActiveColor: "bg-emerald-600",
     checklist: [
-      { id: "p1", text: "Outrigger spreader pads positioned", done: true },
-      { id: "p2", text: "55m jib counterweights balanced", done: true },
-      { id: "p3", text: "15-tonne proof test lift with appointed person", done: false },
+      { id: "p1", text: "Outrigger spreader pads checked", done: true },
+      { id: "p2", text: "15-tonne proof test lift with appointed person", done: true },
     ],
-    note: "Appointed lifting supervisor signed certificate",
-    progress: 40,
+    note: "Appointed lifting supervisor onsite",
+    progress: 75,
     assignees: [
       { name: "Tom Harris", initials: "TH", avatarBg: "bg-emerald-600" },
       { name: "Mike Johnson", initials: "MJ", avatarBg: "bg-rose-600" },
     ],
-    commentsCount: 12,
-    attachmentsCount: 8,
+    commentsCount: 5,
+    attachmentsCount: 3,
+    dueDate: "This Week",
   },
 
-  // COLUMN 3: In Review
+  // COLUMN 4: Due Soon (14d)
   {
-    id: "task-review-1",
-    columnId: "in-review",
-    title: "#17 Quality Inspection - Column Slump Test & Compressive Cube",
+    id: "task-due-1",
+    columnId: "due-soon",
+    title: "Level 2 Post-Tensioned Slab Decking & Conduits",
     tags: [
-      { label: "inspection", bgClass: "bg-pink-100/90", textClass: "text-pink-800" },
-      { label: "qa", bgClass: "bg-pink-100/90", textClass: "text-pink-800" },
-    ],
-    bgClass: "bg-[#fdf2f8]",
-    borderClass: "border-pink-200/70",
-    dotActiveColor: "bg-pink-600",
-    note: "Inspector approved slump: 115mm (normal spec 120mm)",
-    progress: 70,
-    assignees: [
-      { name: "Sarah Chen", initials: "SC", avatarBg: "bg-purple-600" },
-      { name: "John Smith", initials: "JS", avatarBg: "bg-blue-600" },
-    ],
-    commentsCount: 12,
-    attachmentsCount: 8,
-  },
-  {
-    id: "task-review-2",
-    columnId: "in-review",
-    title: "Unitised curtain wall bracket verification & wind-load check",
-    tags: [
-      { label: "envelope", bgClass: "bg-sky-100/90", textClass: "text-sky-800" },
-      { label: "facade", bgClass: "bg-sky-100/90", textClass: "text-sky-800" },
-    ],
-    bgClass: "bg-[#f0f9ff]",
-    borderClass: "border-sky-200/70",
-    dotActiveColor: "bg-sky-600",
-    note: "Deflection test calculations submitted to council",
-    progress: 60,
-    assignees: [
-      { name: "David Wilson", initials: "DW", avatarBg: "bg-amber-600" },
-      { name: "Sarah Chen", initials: "SC", avatarBg: "bg-purple-600" },
-    ],
-    commentsCount: 12,
-    attachmentsCount: 8,
-  },
-  {
-    id: "task-review-3",
-    columnId: "in-review",
-    title: "Underground stormwater pit C oil & silt interceptor",
-    tags: [
-      { label: "civils", bgClass: "bg-amber-100/90", textClass: "text-amber-800" },
-      { label: "attenuation", bgClass: "bg-amber-100/90", textClass: "text-amber-800" },
-    ],
-    bgClass: "bg-[#fffbeb]",
-    borderClass: "border-amber-200/70",
-    dotActiveColor: "bg-amber-600",
-    note: "Discharge consent signed off by environmental inspector",
-    progress: 50,
-    assignees: [
-      { name: "Tom Harris", initials: "TH", avatarBg: "bg-emerald-600" },
-    ],
-    commentsCount: 12,
-    attachmentsCount: 8,
-  },
-  {
-    id: "task-review-4",
-    columnId: "in-review",
-    title: "Level 2 temporary dry riser fire standpipe extension",
-    tags: [
-      { label: "fire-safety", bgClass: "bg-violet-100/90", textClass: "text-violet-800" },
-      { label: "m&e", bgClass: "bg-violet-100/90", textClass: "text-violet-800" },
+      { label: "structural", bgClass: "bg-indigo-100", textClass: "text-indigo-800" },
+      { label: "m&e 1st fix", bgClass: "bg-cyan-100", textClass: "text-cyan-800" },
     ],
     bgClass: "bg-[#f5f3ff]",
-    borderClass: "border-violet-200/70",
-    dotActiveColor: "bg-violet-600",
-    note: "12-bar hydrostatic pressure test certified",
-    progress: 80,
+    borderClass: "border-indigo-200",
+    dotActiveColor: "bg-indigo-600",
+    note: "Pre-pour inspection scheduled for 18 Mar",
+    progress: 35,
     assignees: [
       { name: "Mike Johnson", initials: "MJ", avatarBg: "bg-rose-600" },
+      { name: "Ryan Wilson", initials: "RW", avatarBg: "bg-rose-600" },
     ],
-    commentsCount: 12,
-    attachmentsCount: 8,
+    commentsCount: 4,
+    attachmentsCount: 1,
+    dueDate: "18 Mar 2026",
+  },
+  {
+    id: "task-due-2",
+    columnId: "due-soon",
+    title: "Unitised curtain wall bracket survey & 3D coordinate check",
+    tags: [
+      { label: "façade", bgClass: "bg-sky-100", textClass: "text-sky-800" },
+      { label: "survey", bgClass: "bg-purple-100", textClass: "text-purple-800" },
+    ],
+    bgClass: "bg-[#f0f9ff]",
+    borderClass: "border-sky-200",
+    dotActiveColor: "bg-sky-600",
+    note: "Total station benchmark recalibrated against BIM grid",
+    progress: 20,
+    assignees: [
+      { name: "Sarah Chen", initials: "SC", avatarBg: "bg-purple-600" },
+    ],
+    commentsCount: 3,
+    attachmentsCount: 2,
+    dueDate: "21 Mar 2026",
   },
 
-  // COLUMN 4: Done
+  // COLUMN 5: Upcoming
   {
-    id: "task-site-est",
-    columnId: "done",
-    title: "Site Establishment & Boundary Hoarding Handover",
+    id: "task-up-1",
+    columnId: "upcoming",
+    title: "Superstructure Level 3 Handover Milestone",
     tags: [
-      { label: "preliminaries", bgClass: "bg-cyan-100/90", textClass: "text-cyan-800" },
-      { label: "site-setup", bgClass: "bg-cyan-100/90", textClass: "text-cyan-800" },
+      { label: "milestone", bgClass: "bg-amber-100 font-bold", textClass: "text-amber-800" },
+      { label: "critical path", bgClass: "bg-red-100 font-bold", textClass: "text-red-800" },
     ],
-    bgClass: "bg-[#ecfeff]",
-    borderClass: "border-cyan-200/70",
-    dotActiveColor: "bg-cyan-600",
-    checklist: [
-      { id: "d1", text: "2.4m timber perimeter hoarding erected", done: true },
-      { id: "d2", text: "Site safety signage & viewing panels", done: true },
-      { id: "d3", text: "Temporary power & builder water connected", done: true },
-      { id: "d4", text: "HSE welfare facilities double-stacked", done: true },
-      { id: "d5", text: "Local authority road permit approved", done: true },
-    ],
-    note: "Practical completion signoff archived",
-    progress: 100,
+    bgClass: "bg-white",
+    borderClass: "border-slate-200",
+    dotActiveColor: "bg-amber-600",
+    note: "Major contract milestone diamond #4. Planned handover 16 Apr.",
+    progress: 0,
     assignees: [
       { name: "John Smith", initials: "JS", avatarBg: "bg-blue-600" },
-      { name: "Tom Harris", initials: "TH", avatarBg: "bg-emerald-600" },
-      { name: "David Wilson", initials: "DW", avatarBg: "bg-amber-600" },
-    ],
-    commentsCount: 7,
-    attachmentsCount: 2,
-  },
-  {
-    id: "task-done-2",
-    columnId: "done",
-    title: "CFA Continuous Flight Auger Piling (84 Piles Complete)",
-    tags: [
-      { label: "piling", bgClass: "bg-orange-100/90", textClass: "text-orange-800" },
-      { label: "foundations", bgClass: "bg-orange-100/90", textClass: "text-orange-800" },
-    ],
-    bgClass: "bg-[#fff7ed]",
-    borderClass: "border-orange-200/70",
-    dotActiveColor: "bg-orange-600",
-    note: "All sonic integrity logging reports signed off",
-    progress: 100,
-    assignees: [
-      { name: "Tom Harris", initials: "TH", avatarBg: "bg-emerald-600" },
       { name: "Sarah Chen", initials: "SC", avatarBg: "bg-purple-600" },
     ],
     commentsCount: 12,
     attachmentsCount: 8,
+    dueDate: "16 Apr 2026",
+  },
+  {
+    id: "task-up-2",
+    columnId: "upcoming",
+    title: "Façade Unitised Panel Installation Commences",
+    tags: [
+      { label: "envelope", bgClass: "bg-slate-100", textClass: "text-slate-800" },
+      { label: "logistics", bgClass: "bg-slate-100", textClass: "text-slate-800" },
+    ],
+    bgClass: "bg-white",
+    borderClass: "border-slate-200",
+    dotActiveColor: "bg-slate-400",
+    note: "Panel delivery shipment from port scheduled 01 May",
+    progress: 0,
+    assignees: [
+      { name: "Tom Harris", initials: "TH", avatarBg: "bg-emerald-600" },
+    ],
+    commentsCount: 2,
+    attachmentsCount: 1,
+    dueDate: "01 May 2026",
   },
 ];
 
-const COLUMNS = [
-  { id: "todo", title: "Todo list" },
-  { id: "in-progress", title: "In Progress" },
-  { id: "in-review", title: "In Review" },
-  { id: "done", title: "Done" },
+const COLUMNS: {
+  id: ScheduleColumnId;
+  title: string;
+  subtitle: string;
+  badgeClass: string;
+}[] = [
+  { id: "overdue", title: "Overdue", subtitle: "Action Required", badgeClass: "bg-red-100 text-red-700 border-red-200" },
+  { id: "blocked", title: "Blocked", subtitle: "Trade/RFI Holds", badgeClass: "bg-amber-100 text-amber-800 border-amber-200" },
+  { id: "today", title: "Today & This Week", subtitle: "Active Execution", badgeClass: "bg-blue-100 text-blue-800 border-blue-200" },
+  { id: "due-soon", title: "Due Soon (14d)", subtitle: "Lookahead Window", badgeClass: "bg-indigo-100 text-indigo-800 border-indigo-200" },
+  { id: "upcoming", title: "Upcoming", subtitle: "Scheduled Next", badgeClass: "bg-slate-100 text-slate-700 border-slate-200" },
 ];
 
 const TEAM_MEMBERS = [
@@ -362,7 +352,7 @@ export function CalendarView() {
   const [viewDropdownOpen, setViewDropdownOpen] = useState<boolean>(false);
   const [filterPanelOpen, setFilterPanelOpen] = useState<boolean>(false);
   const [createModalOpen, setCreateModalOpen] = useState<boolean>(false);
-  const [newTaskColumn, setNewTaskColumn] = useState<KanbanTask["columnId"]>("todo");
+  const [newTaskColumn, setNewTaskColumn] = useState<KanbanTask["columnId"]>("today");
   const [newTaskTitle, setNewTaskTitle] = useState<string>("");
 
   // Toggle checklist item
@@ -535,7 +525,7 @@ export function CalendarView() {
           {/* + Create task Button */}
           <button
             onClick={() => {
-              setNewTaskColumn("todo");
+              setNewTaskColumn("today");
               setCreateModalOpen(true);
             }}
             className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-1.5 text-[12.5px] font-semibold text-white shadow-xs hover:bg-black transition-colors"
@@ -546,40 +536,42 @@ export function CalendarView() {
         </div>
       </div>
 
-      {/* 2. Board View (Kanban with Pastel Tinted Cards matching user's image) */}
+      {/* 2. Board View (Construction-focused Schedule Categories: Overdue, Blocked, Today, Due Soon, Upcoming) */}
       {subView === "board" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mt-4 flex-1 items-start overflow-y-auto pr-1">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 mt-4 flex-1 items-start overflow-y-auto pr-1">
           {COLUMNS.map((col) => {
             const colTasks = filteredTasks.filter((t) => t.columnId === col.id);
 
             return (
               <div
                 key={col.id}
-                className="flex flex-col rounded-2xl bg-slate-100/50 border border-slate-200/40 p-3 min-w-0"
+                className="flex flex-col rounded-2xl bg-slate-100/50 border border-slate-200/50 p-2.5 min-w-0"
               >
                 {/* Column Header */}
-                <div className="flex items-center justify-between px-1 mb-3 text-slate-800">
-                  <div className="flex items-center gap-1.5 font-bold text-[14px]">
-                    <ChevronRight className="h-4 w-4 text-slate-400" />
-                    <span>{col.title}</span>
-                    <span className="text-[11px] font-medium text-slate-400 ml-1">
-                      ({colTasks.length})
-                    </span>
+                <div className="flex flex-col gap-0.5 px-1 mb-2.5 text-slate-800">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 font-bold text-[13px] truncate">
+                      <span>{col.title}</span>
+                      <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-xs border font-semibold ${col.badgeClass}`}>
+                        {colTasks.length}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 text-slate-400 shrink-0">
+                      <button
+                        onClick={() => {
+                          setNewTaskColumn(col.id);
+                          setCreateModalOpen(true);
+                        }}
+                        className="h-5 w-5 rounded hover:bg-slate-200/60 hover:text-slate-700 flex items-center justify-center transition-colors"
+                        title="Add task to this schedule bucket"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1 text-slate-400">
-                    <button
-                      onClick={() => {
-                        setNewTaskColumn(col.id as any);
-                        setCreateModalOpen(true);
-                      }}
-                      className="h-6 w-6 rounded hover:bg-slate-200/60 hover:text-slate-700 flex items-center justify-center transition-colors"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                    </button>
-                    <button className="h-6 w-6 rounded hover:bg-slate-200/60 hover:text-slate-700 flex items-center justify-center transition-colors">
-                      <MoreVertical className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+                  <span className="text-[10px] text-slate-500 font-normal">
+                    {col.subtitle}
+                  </span>
                 </div>
 
                 {/* Column Cards */}

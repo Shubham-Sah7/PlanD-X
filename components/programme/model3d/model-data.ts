@@ -6,7 +6,7 @@ export type ElementType = "slab" | "columns" | "core" | "walls" | "beams" | "sta
 export type BuildingLevel = string; // Supports dynamic levels (Basement, Ground, Level 1..N, Mezzanine, Roof)
 export type TradeType = "Structural" | "M&E" | "Façade" | "Finishes" | "Civils" | "Management" | "Substructure" | "Design";
 export type ViewMode3D = "3d" | "2d" | "top";
-export type ElementFilter = "all" | "columns" | "slabs" | "walls" | "beams" | "core" | "stairs";
+export type ElementFilter = "all" | "structure" | "columns" | "slabs" | "walls" | "beams" | "core" | "stairs";
 export type NavMode = "levels" | "disciplines" | "work-packages";
 export type AttentionType = "blocked" | "overdue" | "critical" | "due-this-week";
 

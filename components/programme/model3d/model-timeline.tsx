@@ -12,6 +12,8 @@ interface ModelTimelineProps {
   onSelectElement?: (el: ModelElement) => void;
   scrubMonthIndex?: number;
   onScrubMonth?: (index: number) => void;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
 }
 
 const TIMELINE_MONTHS = [
@@ -39,7 +41,13 @@ export function ModelTimeline({
   onSelectElement,
   scrubMonthIndex = 5.3,
   onScrubMonth,
+  isExpanded: controlledExpanded,
+  onToggleExpand,
 }: ModelTimelineProps) {
+  const [internalExpanded, setInternalExpanded] = useState(false);
+  const isExpanded = controlledExpanded !== undefined ? controlledExpanded : internalExpanded;
+  const toggleExpanded = onToggleExpand || (() => setInternalExpanded((v) => !v));
+
   const [timelineTab, setTimelineTab] = useState<"phases" | "milestones">("phases");
   const [isPlaying, setIsPlaying] = useState(false);
   const totalMonths = TIMELINE_MONTHS.length;
@@ -61,9 +69,104 @@ export function ModelTimeline({
 
   const activeMonthData = TIMELINE_MONTHS[Math.min(totalMonths - 1, Math.floor(currentScrub))];
 
+  // If in COMPACT state (default), render a sleek 34px scrubber bar that doesn't dominate viewport
+  if (!isExpanded) {
+    return (
+      <div className="border-t border-slate-200 bg-white select-none shrink-0 h-9 flex items-center justify-between px-3 text-[11px]">
+        {/* Left: Title + Simulation controls */}
+        <div className="flex items-center gap-2.5">
+          <span className="font-semibold text-slate-800 text-[11px] tracking-tight flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />
+            Timeline
+          </span>
+
+          <div className="h-3 w-[1px] bg-slate-200" />
+
+          {/* 4D Simulation */}
+          <button
+            onClick={() => setIsPlaying((p) => !p)}
+            className={`flex items-center gap-1 px-2 py-0.5 rounded-xs text-[10px] font-medium border transition-colors ${
+              isPlaying
+                ? "bg-amber-500 text-white border-amber-600"
+                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+            }`}
+            title={isPlaying ? "Pause 4D simulation" : "Play 4D schedule simulation"}
+          >
+            <span>{isPlaying ? "❚❚ Pause" : "▶ Play 4D"}</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setIsPlaying(false);
+              onScrubMonth?.(5.3);
+            }}
+            className="text-[10px] text-slate-500 hover:text-slate-800 px-1.5 py-0.5 rounded-xs hover:bg-slate-100 transition-colors"
+            title="Reset to today"
+          >
+            Today
+          </button>
+
+          <div className="flex items-center gap-1 text-[10px] font-mono text-slate-600 bg-slate-50 px-2 py-0.5 rounded-xs border border-slate-200">
+            <span className="text-slate-400">Date:</span>
+            <span className="font-semibold text-slate-800">
+              {activeMonthData.month} {activeMonthData.year}
+            </span>
+          </div>
+        </div>
+
+        {/* Centre: Mini Scrubber Bar */}
+        <div className="flex-1 max-w-xl mx-4 flex items-center gap-2">
+          <span className="text-[9px] text-slate-400 font-mono">Sep &apos;25</span>
+          <div className="relative flex-1 h-3 flex items-center cursor-pointer group">
+            {/* Background track */}
+            <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden relative border border-slate-200/60">
+              <div
+                className="h-full bg-blue-500 transition-all duration-75"
+                style={{ width: `${scrubPercent}%` }}
+              />
+            </div>
+            {/* Interactive input slider overlay */}
+            <input
+              type="range"
+              min={0}
+              max={totalMonths - 1}
+              step={0.1}
+              value={currentScrub}
+              onChange={(e) => onScrubMonth?.(parseFloat(e.target.value))}
+              className="absolute inset-0 opacity-0 cursor-ew-resize w-full h-full"
+            />
+            {/* Thumb */}
+            <div
+              className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-white border-2 border-blue-600 shadow-xs pointer-events-none transition-transform group-hover:scale-110"
+              style={{ left: `${scrubPercent}%` }}
+            />
+          </div>
+          <span className="text-[9px] text-slate-400 font-mono">Nov &apos;26</span>
+        </div>
+
+        {/* Right: Milestone callout + Expand button */}
+        <div className="flex items-center gap-2">
+          <div className="hidden md:flex items-center gap-1.5 text-[10px] text-slate-500 bg-amber-50/80 border border-amber-200/60 px-2 py-0.5 rounded-xs">
+            <span className="w-1.5 h-1.5 rotate-45 bg-amber-500 shrink-0" />
+            <span className="font-medium text-amber-900">Next: L3 Handover (16 Apr)</span>
+          </div>
+
+          <button
+            onClick={toggleExpanded}
+            className="flex items-center gap-1 border border-slate-200 bg-white hover:bg-slate-50 px-2 py-0.5 rounded-xs text-[10.5px] font-medium text-slate-700 transition-colors"
+            title="Expand full Gantt phases & milestones"
+          >
+            <span>Expand</span>
+            <ChevronDown className="h-3 w-3 text-slate-400 rotate-180" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="border-t border-slate-200 bg-white select-none shrink-0">
-      {/* Header bar */}
+      {/* Expanded Header bar */}
       <div className="flex h-8 items-center justify-between border-b border-slate-200 px-4">
         <div className="flex items-center gap-3">
           <span className="text-[12px] font-semibold text-slate-800 tracking-tight">
@@ -100,7 +203,7 @@ export function ModelTimeline({
               className={`flex items-center gap-1 px-2 py-0.5 rounded-xs text-[10px] font-medium border transition-colors ${
                 isPlaying
                   ? "bg-amber-500 text-white border-amber-600"
-                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
               }`}
               title={isPlaying ? "Pause 4D simulation" : "Play 4D schedule simulation"}
             >
@@ -135,6 +238,14 @@ export function ModelTimeline({
           <button className="flex items-center gap-1 border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-700 hover:bg-slate-50 transition-colors rounded-xs">
             <Maximize2 className="h-2.5 w-2.5 text-slate-400" />
             <span>Fit</span>
+          </button>
+          <button
+            onClick={toggleExpanded}
+            className="flex items-center gap-1 border border-slate-200 bg-slate-50 hover:bg-slate-100 px-2 py-0.5 text-[10.5px] font-medium text-slate-700 transition-colors rounded-xs ml-1"
+            title="Collapse timeline to compact bar"
+          >
+            <span>Collapse</span>
+            <ChevronDown className="h-3 w-3 text-slate-400" />
           </button>
         </div>
       </div>

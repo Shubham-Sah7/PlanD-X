@@ -98,21 +98,46 @@ export function WBSTree({ tasks }: { tasks: ProgrammeTask[] }) {
           const isExpanded = state.expandedNodes.has(task.id);
           const hasChildren = task.children.length > 0;
           const IconComponent = getTaskIcon(task);
+          const isPhase = task.level === "phase";
+          const isWorkPackage = task.level === "work-package";
+          const isLeafTask = !isPhase && !isWorkPackage;
 
-          const paddingLeft = `${task.depth * 15 + 2}px`;
+          const paddingLeft = `${task.depth * 14 + 2}px`;
+
+          // Status indicator color for leaf tasks
+          const statusDotColor =
+            task.progress >= 100
+              ? "bg-emerald-500"
+              : task.status === "blocked"
+              ? "bg-red-500"
+              : task.progress > 0
+              ? "bg-blue-600"
+              : "bg-slate-300";
 
           return (
             <div
               key={task.id}
               onClick={() => selectTask(task.id)}
               className={`group flex h-10 items-center px-3 text-[13px] transition-colors cursor-pointer ${
-                isSelected
-                  ? "bg-blue-50/80 font-medium text-blue-950"
-                  : "hover:bg-slate-50/80 text-slate-800"
+                isPhase
+                  ? "bg-slate-50/90 hover:bg-slate-100/90 text-slate-900 border-l-3 border-transparent"
+                  : isWorkPackage
+                  ? "bg-white hover:bg-slate-50 text-slate-800 border-l-3 border-transparent"
+                  : isSelected
+                  ? "bg-blue-50/90 font-medium text-blue-950 border-l-3 border-blue-600 shadow-2xs"
+                  : "bg-white hover:bg-slate-50 text-slate-700 border-l-3 border-transparent"
               }`}
             >
               {/* # Index column */}
-              <div className="w-9 shrink-0 text-left pl-0.5 font-mono text-[11px] text-slate-400 font-medium truncate">
+              <div
+                className={`w-9 shrink-0 text-left pl-0.5 font-mono text-[11px] truncate ${
+                  isPhase
+                    ? "font-bold text-slate-700"
+                    : isWorkPackage
+                    ? "font-semibold text-slate-600"
+                    : "text-slate-400 font-medium"
+                }`}
+              >
                 {task.wbs}
               </div>
 
@@ -136,6 +161,10 @@ export function WBSTree({ tasks }: { tasks: ProgrammeTask[] }) {
                       <ChevronRight className="h-3.5 w-3.5" />
                     )}
                   </button>
+                ) : isLeafTask ? (
+                  <span className="w-5 shrink-0 flex items-center justify-center">
+                    <span className={`h-1.5 w-1.5 rounded-full ${statusDotColor}`} />
+                  </span>
                 ) : (
                   <div className="w-5 shrink-0" />
                 )}
@@ -143,11 +172,13 @@ export function WBSTree({ tasks }: { tasks: ProgrammeTask[] }) {
                 {/* Construction Icon */}
                 <div
                   className={`flex h-5 w-5 shrink-0 items-center justify-center rounded ${
-                    task.level === "phase"
-                      ? "text-slate-700"
+                    isPhase
+                      ? "text-slate-800"
+                      : isWorkPackage
+                      ? "text-slate-600"
                       : isSelected
                       ? "text-blue-600"
-                      : "text-slate-500"
+                      : "text-slate-400"
                   }`}
                 >
                   <IconComponent className="h-4 w-4" />
@@ -156,11 +187,13 @@ export function WBSTree({ tasks }: { tasks: ProgrammeTask[] }) {
                 {/* Task Name */}
                 <span
                   className={`truncate ${
-                    task.level === "phase"
-                      ? "font-semibold text-slate-900"
-                      : task.level === "work-package"
-                      ? "font-medium text-slate-800"
-                      : "text-slate-700"
+                    isPhase
+                      ? "font-bold text-slate-900 text-[12.5px] uppercase tracking-wide"
+                      : isWorkPackage
+                      ? "font-semibold text-slate-800 text-[12.5px]"
+                      : isSelected
+                      ? "font-semibold text-blue-900"
+                      : "font-normal text-slate-700"
                   }`}
                 >
                   {task.name}
@@ -169,8 +202,10 @@ export function WBSTree({ tasks }: { tasks: ProgrammeTask[] }) {
                 {/* Task Count Badge */}
                 {task.taskCount ? (
                   <span
-                    className={`ml-auto mr-0.5 shrink-0 rounded-full px-1.5 py-0.2 text-[10px] font-semibold transition-colors ${
-                      isSelected
+                    className={`ml-auto mr-0.5 shrink-0 rounded-full px-1.5 py-0.2 text-[9.5px] font-semibold transition-colors ${
+                      isPhase
+                        ? "bg-slate-200 text-slate-700"
+                        : isSelected
                         ? "bg-blue-200/80 text-blue-800"
                         : "bg-slate-100 text-slate-500 group-hover:bg-slate-200/80"
                     }`}
@@ -180,17 +215,17 @@ export function WBSTree({ tasks }: { tasks: ProgrammeTask[] }) {
                 ) : null}
               </div>
 
-              {/* Start Date - exactly 74px, zero crowding */}
+              {/* Start Date */}
               <div className="w-[74px] shrink-0 text-center text-[11px] text-slate-500 font-mono">
                 {formatDisplayDate(task.displayStart)}
               </div>
 
-              {/* Finish Date - exactly 74px, zero crowding */}
+              {/* Finish Date */}
               <div className="w-[74px] shrink-0 text-center text-[11px] text-slate-500 font-mono">
                 {formatDisplayDate(task.displayEnd)}
               </div>
 
-              {/* Progress Bar + % - generous 86px with dedicated spacing */}
+              {/* Progress Bar + % */}
               <div className="flex w-[86px] shrink-0 items-center justify-end gap-1.5 pr-0.5">
                 <div className="h-1.5 w-7 rounded-full bg-slate-100 overflow-hidden shrink-0">
                   <div
@@ -198,7 +233,7 @@ export function WBSTree({ tasks }: { tasks: ProgrammeTask[] }) {
                       task.progress >= 100
                         ? "bg-emerald-500"
                         : task.progress > 0
-                        ? "bg-emerald-500"
+                        ? "bg-blue-600"
                         : "bg-slate-200"
                     }`}
                     style={{ width: `${task.progress}%` }}

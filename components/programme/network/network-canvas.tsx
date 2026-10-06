@@ -171,6 +171,32 @@ export function NetworkCanvas() {
     return { focusNodeIds: nodeIds, focusEdgeKeys: edgeKeys };
   }, [selectedTaskId, state.tasks]);
 
+  // Selected task & its predecessor/successor tasks
+  const selectedTaskObj = useMemo(() => {
+    if (!selectedTaskId) return null;
+    return (
+      state.tasks.find((t) => t.id === selectedTaskId) ||
+      layouts.find((l) => l.id === selectedTaskId)?.task ||
+      null
+    );
+  }, [selectedTaskId, state.tasks, layouts]);
+
+  const predecessorTasks = useMemo(() => {
+    if (!selectedTaskObj) return [];
+    const preds = selectedTaskObj.predecessors || [];
+    return layouts
+      .filter((l) => preds.includes(l.id))
+      .map((l) => l.task);
+  }, [selectedTaskObj, layouts]);
+
+  const successorTasks = useMemo(() => {
+    if (!selectedTaskObj) return [];
+    const succs = selectedTaskObj.successors || [];
+    return layouts
+      .filter((l) => succs.includes(l.id))
+      .map((l) => l.task);
+  }, [selectedTaskObj, layouts]);
+
   // Pan interaction handlers
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -525,6 +551,8 @@ export function NetworkCanvas() {
             const isSelected = selectedTaskId === id;
             const isFocused = focusNodeIds.has(id);
             const isDimmed = selectedTaskId !== null && !isSelected && !isFocused;
+            const isPredecessor = selectedTaskObj?.predecessors?.includes(id);
+            const isSuccessor = selectedTaskObj?.successors?.includes(id);
 
             // Status styling matching user's image
             const isComplete =
@@ -547,7 +575,11 @@ export function NetworkCanvas() {
             }
 
             if (isSelected) {
-              borderClass = "border-blue-600 ring-2 ring-blue-200 shadow-md";
+              borderClass = "border-blue-600 ring-2 ring-blue-400 shadow-md";
+            } else if (isPredecessor) {
+              borderClass = "border-blue-400 ring-1 ring-blue-200";
+            } else if (isSuccessor) {
+              borderClass = "border-indigo-400 ring-1 ring-indigo-200";
             }
 
             // Duration & percentage text
@@ -587,7 +619,7 @@ export function NetworkCanvas() {
                   openDrawer(id);
                 }}
                 className={`network-node-card absolute rounded-2xl border-[1.5px] bg-white cursor-pointer transition-all duration-150 hover:-translate-y-0.5 ${borderClass} ${glowShadow} ${
-                  isDimmed ? "opacity-75" : "opacity-100"
+                  isDimmed ? "opacity-20 hover:opacity-90" : "opacity-100"
                 }`}
                 style={{
                   left: `${x}px`,
@@ -596,6 +628,21 @@ export function NetworkCanvas() {
                   height: `${height}px`,
                 }}
               >
+                {/* Predecessor / Successor Indicator Tag */}
+                {isSelected ? (
+                  <span className="absolute -top-2.5 left-3 rounded-full bg-blue-600 px-1.5 py-0.2 text-[8.5px] font-bold uppercase text-white tracking-wider shadow-xs">
+                    Selected Task
+                  </span>
+                ) : isPredecessor ? (
+                  <span className="absolute -top-2.5 left-3 rounded-full bg-blue-100 border border-blue-300 px-1.5 py-0.2 text-[8.5px] font-bold text-blue-800 tracking-wider shadow-2xs">
+                    ← Predecessor
+                  </span>
+                ) : isSuccessor ? (
+                  <span className="absolute -top-2.5 left-3 rounded-full bg-indigo-100 border border-indigo-300 px-1.5 py-0.2 text-[8.5px] font-bold text-indigo-800 tracking-wider shadow-2xs">
+                    Successor →
+                  </span>
+                ) : null}
+
                 {/* Main Card Content */}
                 <div className="flex items-center gap-2.5 px-3 pt-2 pb-1.5">
                   {/* Left Status Icon */}
@@ -672,7 +719,79 @@ export function NetworkCanvas() {
         </div>
       </div>
 
-      {/* 6. Overview (Minimap) Widget (Bottom Left) matching reference image */}
+      {/* 6. Focused Dependency Trace Bar (Requirement 5) */}
+      {selectedTaskObj && (
+        <div className="absolute top-18 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 rounded-lg border border-slate-200/90 bg-white/95 px-3.5 py-1.5 shadow-md backdrop-blur-md text-[12px] animate-in fade-in-50 duration-150 max-w-[90vw] overflow-x-auto">
+          {/* Predecessors */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+              Predecessors ({predecessorTasks.length}):
+            </span>
+            {predecessorTasks.length > 0 ? (
+              predecessorTasks.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    selectTask(p.id);
+                    openDrawer(p.id);
+                  }}
+                  className="flex items-center gap-1 rounded bg-slate-100 hover:bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:text-blue-700 transition-colors cursor-pointer"
+                  title={`Predecessor: ${p.name}`}
+                >
+                  <span>{p.id}</span>
+                </button>
+              ))
+            ) : (
+              <span className="text-[10.5px] text-slate-400 italic">None (Start)</span>
+            )}
+          </div>
+
+          <span className="text-slate-300 font-bold shrink-0">➔</span>
+
+          {/* Selected Task */}
+          <div className="flex items-center gap-1.5 rounded bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-blue-900 font-bold shrink-0">
+            <span className="font-mono text-[11px]">{selectedTaskObj.id}</span>
+            <span className="truncate max-w-[140px]">{selectedTaskObj.name}</span>
+          </div>
+
+          <span className="text-slate-300 font-bold shrink-0">➔</span>
+
+          {/* Successors */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+              Successors ({successorTasks.length}):
+            </span>
+            {successorTasks.length > 0 ? (
+              successorTasks.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => {
+                    selectTask(s.id);
+                    openDrawer(s.id);
+                  }}
+                  className="flex items-center gap-1 rounded bg-slate-100 hover:bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:text-blue-700 transition-colors cursor-pointer"
+                  title={`Successor: ${s.name}`}
+                >
+                  <span>{s.id}</span>
+                </button>
+              ))
+            ) : (
+              <span className="text-[10.5px] text-slate-400 italic">None (Finish)</span>
+            )}
+          </div>
+
+          {/* Clear focus button */}
+          <button
+            onClick={() => selectTask("")}
+            className="ml-1 text-slate-400 hover:text-slate-700 p-0.5 rounded hover:bg-slate-100 transition-colors shrink-0"
+            title="Clear focus (Esc)"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* 7. Overview (Minimap) Widget (Bottom Left) matching reference image */}
       {showOverview && (
         <div className="absolute bottom-4 left-4 z-20 rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-md backdrop-blur-md w-52 select-none">
           {/* Header */}

@@ -104,9 +104,60 @@ export function ProgrammeHeader() {
             </span>
           </div>
 
-          {/* 5 Construction-Specific KPI Metric Tiles (Metric + Context + Meaning) */}
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5 mt-2.5">
-            {/* Card 1: 48% Overall Progress */}
+          {/* Next Milestone Dedicated Attention Banner */}
+          <div
+            onClick={() => {
+              selectTask("task-columns");
+              openDrawer("task-columns");
+            }}
+            className="flex items-center justify-between rounded-sm border border-amber-200 bg-amber-50/70 px-3 py-1.5 hover:border-amber-400 hover:bg-amber-50 transition-colors text-left cursor-pointer mt-2.5"
+            title="Next milestone attention item · Click to inspect in task drawer"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="h-2 w-2 rotate-45 bg-amber-500 shrink-0" />
+              <span className="text-[11px] font-bold text-amber-900 uppercase tracking-wider shrink-0">
+                Next Milestone:
+              </span>
+              <span className="text-[12.5px] font-bold text-slate-900 truncate">
+                Superstructure L3 Handover
+              </span>
+              <span className="rounded-xs bg-amber-100 px-1.5 py-0.2 text-[9.5px] font-bold text-amber-800 border border-amber-300/80 shrink-0">
+                Critical Path
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 font-mono text-[11px]">
+              <span className="text-slate-600 hidden sm:inline">Target: 16 Apr 2026</span>
+              <span className="rounded-xs bg-blue-600 px-1.5 py-0.2 text-[10.5px] font-bold text-white">
+                28d left
+              </span>
+              <ChevronRight className="h-3.5 w-3.5 text-amber-600" />
+            </div>
+          </div>
+
+          {/* 4 Core Construction KPI Metric Cards */}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 mt-2">
+            {/* KPI 1: Total Tasks */}
+            <div
+              onClick={() => setAttentionFilter("all")}
+              className={`flex flex-col justify-between rounded-sm border p-2.5 px-3 transition-colors text-left cursor-pointer ${
+                attentionFilter === "all"
+                  ? "border-slate-300 bg-white hover:border-slate-400"
+                  : "border-slate-200 bg-white hover:border-slate-300"
+              }`}
+              title="Click to reset filter and view all tasks"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-slate-700">Total Tasks</span>
+                <span className="text-[10px] font-mono font-medium text-slate-400">817 scope</span>
+              </div>
+              <div className="flex items-baseline gap-1.5 mt-1">
+                <span className="text-[18px] font-bold text-slate-900 leading-none font-mono">817</span>
+                <span className="text-[10.5px] font-mono text-emerald-600 font-medium">60 done</span>
+              </div>
+              <span className="text-[9.5px] text-slate-500 mt-1.5 truncate">715 remaining tasks</span>
+            </div>
+
+            {/* KPI 2: Overall Progress */}
             <div
               onClick={() => setAttentionFilter(attentionFilter === "in-progress" ? "all" : "in-progress")}
               className={`flex flex-col justify-between rounded-sm border p-2.5 px-3 transition-colors text-left cursor-pointer ${
@@ -118,13 +169,12 @@ export function ProgrammeHeader() {
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-slate-700">Overall Progress</span>
-                <span className="text-[10px] font-mono font-medium text-slate-400">82% planned</span>
+                <span className="text-[10px] font-mono font-medium text-slate-400">82% target</span>
               </div>
               <div className="flex items-baseline gap-1.5 mt-1">
                 <span className="text-[18px] font-bold text-slate-900 leading-none font-mono">48%</span>
                 <span className="text-[10px] font-mono text-red-600 font-medium">-34 pts</span>
               </div>
-              {/* Micro-Progress Bar with planned target marker */}
               <div className="relative mt-2 h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
                 <div className="h-full rounded-full bg-blue-600 transition-all duration-300" style={{ width: "48%" }} />
                 <div
@@ -136,31 +186,30 @@ export function ProgrammeHeader() {
               <span className="text-[9.5px] text-slate-500 mt-1.5 truncate">Behind scheduled pace</span>
             </div>
 
-            {/* Card 2: -45d Schedule Variance */}
-            <div
-              onClick={() => setAttentionFilter(attentionFilter === "overdue" ? "all" : "overdue")}
+            {/* KPI 3: Blocked Tasks */}
+            <button
+              onClick={() => setAttentionFilter(attentionFilter === "blocked" ? "all" : "blocked")}
               className={`flex flex-col justify-between rounded-sm border p-2.5 px-3 transition-colors text-left cursor-pointer ${
-                attentionFilter === "overdue"
-                  ? "border-amber-400 bg-amber-50/60 ring-1 ring-amber-300"
-                  : "border-slate-200 bg-white hover:border-amber-300"
+                attentionFilter === "blocked"
+                  ? "border-red-500 bg-red-50/80 ring-1 ring-red-300"
+                  : "border-slate-200 bg-white hover:border-red-300"
               }`}
-              title="Click to filter delayed tasks"
+              title="Click to filter blocked tasks"
             >
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-slate-700">Schedule Variance</span>
-                <span className="text-[9.5px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 px-1 py-0.2 rounded-xs border border-amber-200/60">
-                  Late
+              <div className="flex items-center justify-between w-full">
+                <span className="text-[11px] font-semibold text-red-700">Blocked</span>
+                <span className="text-[9.5px] font-mono font-bold text-red-600 bg-red-100 px-1 py-0.2 rounded-xs">
+                  Action Req.
                 </span>
               </div>
               <div className="flex items-baseline gap-1.5 mt-1">
-                <span className="text-[18px] font-bold text-amber-700 leading-none font-mono">-45d</span>
-                <span className="text-[10.5px] text-slate-500 font-mono">slip</span>
+                <span className="text-[18px] font-bold text-red-600 leading-none font-mono">28</span>
+                <span className="text-[10.5px] text-red-600 font-mono">tasks</span>
               </div>
-              <span className="text-[10px] text-slate-500 font-mono mt-2 truncate">Forecast 29 Nov &apos;26</span>
-              <span className="text-[9.5px] text-amber-700 font-medium mt-0.5 truncate">232 tasks behind plan</span>
-            </div>
+              <span className="text-[9.5px] text-red-600 font-medium mt-1.5 truncate">3 on critical path</span>
+            </button>
 
-            {/* Card 3: 236 Critical Tasks */}
+            {/* KPI 4: Critical Tasks */}
             <button
               onClick={toggleCriticalPath}
               className={`flex flex-col justify-between rounded-sm border p-2.5 px-3 transition-colors text-left cursor-pointer ${
@@ -170,7 +219,7 @@ export function ProgrammeHeader() {
               }`}
               title="Click to toggle Critical Path highlight"
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between w-full">
                 <span className="text-[11px] font-semibold text-slate-700">Critical Tasks</span>
                 <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
               </div>
@@ -178,54 +227,8 @@ export function ProgrammeHeader() {
                 <span className="text-[18px] font-bold text-slate-900 leading-none font-mono">236</span>
                 <span className="text-[10.5px] font-mono text-red-600 font-medium">tasks</span>
               </div>
-              <span className="text-[10px] text-slate-500 font-mono mt-2 truncate">28 blocked items</span>
-              <span className="text-[9.5px] text-slate-500 mt-0.5 truncate">Driving completion date</span>
+              <span className="text-[9.5px] text-slate-500 mt-1.5 truncate">Driving completion date</span>
             </button>
-
-            {/* Card 4: 5 Overdue Work */}
-            <button
-              onClick={() => setAttentionFilter(attentionFilter === "overdue" ? "all" : "overdue")}
-              className={`flex flex-col justify-between rounded-sm border p-2.5 px-3 transition-colors text-left cursor-pointer ${
-                attentionFilter === "overdue"
-                  ? "border-red-500 bg-red-50/80 ring-1 ring-red-300"
-                  : "border-slate-200 bg-white hover:border-red-300"
-              }`}
-              title="Click to filter overdue tasks"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-red-700">Overdue Work</span>
-                <span className="text-[9.5px] font-mono font-bold text-red-600 bg-red-100/80 px-1 py-0.2 rounded-xs">
-                  ! Alert
-                </span>
-              </div>
-              <div className="flex items-baseline gap-1.5 mt-1">
-                <span className="text-[18px] font-bold text-red-600 leading-none font-mono">5</span>
-                <span className="text-[10.5px] text-red-600 font-mono">active</span>
-              </div>
-              <span className="text-[10px] text-slate-500 font-mono mt-2 truncate">Avg 6.2d delay</span>
-              <span className="text-[9.5px] text-red-600 font-medium mt-0.5 truncate">Immediate action required</span>
-            </button>
-
-            {/* Card 5: Next Milestone */}
-            <div
-              onClick={() => {
-                selectTask("task-columns");
-                openDrawer("task-columns");
-              }}
-              className="flex flex-col justify-between rounded-sm border border-slate-200 bg-white p-2.5 px-3 hover:border-blue-300 transition-colors text-left cursor-pointer"
-              title="Click to inspect next major milestone"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-slate-700">Next Milestone</span>
-                <div className="h-2 w-2 rotate-45 bg-amber-500" />
-              </div>
-              <div className="flex items-baseline gap-1.5 mt-1">
-                <span className="text-[16px] font-bold text-slate-900 leading-none font-mono">16 Apr</span>
-                <span className="text-[10.5px] text-blue-600 font-mono">28d left</span>
-              </div>
-              <span className="text-[10px] text-slate-800 font-semibold mt-2 truncate">Superstructure L3</span>
-              <span className="text-[9.5px] text-slate-500 mt-0.5 truncate">On critical path · Diamond #4</span>
-            </div>
           </div>
         </div>
 

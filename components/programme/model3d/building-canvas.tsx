@@ -783,6 +783,7 @@ function FloorAssembly({
   selectedZone = "all",
   selectedDiscipline = "all",
   visMode = "status",
+  elementFilter = "all",
   sectionMode,
   activeLevelIndex,
   onElementClick,
@@ -797,6 +798,7 @@ function FloorAssembly({
   selectedZone?: string;
   selectedDiscipline?: DisciplineType;
   visMode?: VisualizationMode;
+  elementFilter?: ElementFilter;
   sectionMode: boolean;
   activeLevelIndex: number;
   onElementClick: (el: ModelElement) => void;
@@ -816,11 +818,16 @@ function FloorAssembly({
   const coreEl = elements.find((e) => e.elementType === "core");
 
   const showStructure = selectedDiscipline === "all" || selectedDiscipline === "Structure";
+  const showSlab = (elementFilter === "all" || elementFilter === "structure" || elementFilter === "slabs") && showStructure;
+  const showColumns = (elementFilter === "all" || elementFilter === "structure" || elementFilter === "columns") && showStructure;
+  const showBeams = (elementFilter === "all" || elementFilter === "structure" || elementFilter === "beams") && showStructure;
+  const showCore = (elementFilter === "all" || elementFilter === "structure" || elementFilter === "core" || elementFilter === "walls") && showStructure;
+  const showWalls = (elementFilter === "all" || elementFilter === "structure" || elementFilter === "walls") && showStructure;
 
   return (
     <group>
       {/* 1. Concrete Slab */}
-      {slabEl && showStructure && (
+      {slabEl && showSlab && (
         <SlabMesh
           elevation={baseElevation}
           level={floor.id}
@@ -841,7 +848,7 @@ function FloorAssembly({
       )}
 
       {/* Basement Retaining Walls */}
-      {floor.isBasement && (
+      {floor.isBasement && showWalls && (
         <group position={[0, baseElevation + SLAB_T + floor.height / 2, 0]}>
           <mesh position={[0, 0, -BUILDING_D / 2]}>
             <boxGeometry args={[BUILDING_W, floor.height, 0.4]} />
@@ -867,7 +874,7 @@ function FloorAssembly({
       )}
 
       {/* 2. Concrete Columns */}
-      {colEl && showStructure && (
+      {colEl && showColumns && (
         <ColumnsMesh
           floorBaseElevation={baseElevation}
           floorHeight={floor.height}
@@ -890,7 +897,7 @@ function FloorAssembly({
       )}
 
       {/* 3. Concrete Beams */}
-      {beamEl && showStructure && (
+      {beamEl && showBeams && (
         <BeamsMesh
           floorBaseElevation={baseElevation}
           floorHeight={floor.height}
@@ -907,7 +914,7 @@ function FloorAssembly({
       )}
 
       {/* 4. Core Wall */}
-      {coreEl && showStructure && (
+      {coreEl && showCore && (
         <CoreMesh
           floorBaseElevation={baseElevation}
           floorHeight={floor.height}
@@ -1050,21 +1057,22 @@ function DynamicCalloutProjector({
 
       const isColSelected = selectedElementId === "PRG-021";
       const isColHovered = hoveredCard === "columns";
+      const isColVisible = showCallouts && (isColSelected || isColHovered);
 
-      // Selected: placed to the right of columns so model is completely visible
-      // Normal: compact pin directly at anchor point
-      const cardX = isColSelected ? cx + 75 : isColHovered ? cx + 18 : cx + 14;
+      const cardX = isColSelected ? cx + 75 : cx + 18;
       const cardY = isColSelected ? cy - 70 : cy - 14;
 
       if (colCardRef.current) {
-        colCardRef.current.style.display = "block";
-        colCardRef.current.style.transform = `translate3d(${cardX}px, ${cardY}px, 0)`;
+        colCardRef.current.style.display = isColVisible ? "block" : "none";
+        if (isColVisible) {
+          colCardRef.current.style.transform = `translate3d(${cardX}px, ${cardY}px, 0)`;
+        }
       }
 
       const lineStartX = isColSelected ? cardX : cx;
       const lineStartY = isColSelected ? cardY + 28 : cy;
 
-      if (colGroupRef.current) colGroupRef.current.style.display = isColSelected ? "block" : "none";
+      if (colGroupRef.current) colGroupRef.current.style.display = (showCallouts && isColSelected) ? "block" : "none";
       if (colLineRef.current) {
         colLineRef.current.setAttribute("x1", String(lineStartX));
         colLineRef.current.setAttribute("y1", String(lineStartY));
@@ -1092,19 +1100,22 @@ function DynamicCalloutProjector({
 
       const isSlabSelected = selectedElementId === "PRG-010";
       const isSlabHovered = hoveredCard === "slab";
+      const isSlabVisible = showCallouts && (isSlabSelected || isSlabHovered);
 
-      const cardX = isSlabSelected ? sx - 180 : isSlabHovered ? sx - 130 : sx - 90;
+      const cardX = isSlabSelected ? sx - 180 : sx - 130;
       const cardY = isSlabSelected ? sy - 35 : sy - 14;
 
       if (slabCardRef.current) {
-        slabCardRef.current.style.display = "block";
-        slabCardRef.current.style.transform = `translate3d(${cardX}px, ${cardY}px, 0)`;
+        slabCardRef.current.style.display = isSlabVisible ? "block" : "none";
+        if (isSlabVisible) {
+          slabCardRef.current.style.transform = `translate3d(${cardX}px, ${cardY}px, 0)`;
+        }
       }
 
       const lineStartX = isSlabSelected ? cardX + 160 : sx;
       const lineStartY = isSlabSelected ? cardY + 24 : sy;
 
-      if (slabGroupRef.current) slabGroupRef.current.style.display = isSlabSelected ? "block" : "none";
+      if (slabGroupRef.current) slabGroupRef.current.style.display = (showCallouts && isSlabSelected) ? "block" : "none";
       if (slabLineRef.current) {
         slabLineRef.current.setAttribute("x1", String(lineStartX));
         slabLineRef.current.setAttribute("y1", String(lineStartY));
@@ -1132,19 +1143,22 @@ function DynamicCalloutProjector({
 
       const isCoreSelected = selectedElementId === "PRG-022";
       const isCoreHovered = hoveredCard === "core";
+      const isCoreVisible = showCallouts && (isCoreSelected || isCoreHovered);
 
-      const cardX = isCoreSelected ? rx + 65 : isCoreHovered ? rx + 18 : rx + 14;
+      const cardX = isCoreSelected ? rx + 65 : rx + 18;
       const cardY = isCoreSelected ? ry - 50 : ry - 14;
 
       if (coreCardRef.current) {
-        coreCardRef.current.style.display = "block";
-        coreCardRef.current.style.transform = `translate3d(${cardX}px, ${cardY}px, 0)`;
+        coreCardRef.current.style.display = isCoreVisible ? "block" : "none";
+        if (isCoreVisible) {
+          coreCardRef.current.style.transform = `translate3d(${cardX}px, ${cardY}px, 0)`;
+        }
       }
 
       const lineStartX = isCoreSelected ? cardX : rx;
       const lineStartY = isCoreSelected ? cardY + 24 : ry;
 
-      if (coreGroupRef.current) coreGroupRef.current.style.display = isCoreSelected ? "block" : "none";
+      if (coreGroupRef.current) coreGroupRef.current.style.display = (showCallouts && isCoreSelected) ? "block" : "none";
       if (coreLineRef.current) {
         coreLineRef.current.setAttribute("x1", String(lineStartX));
         coreLineRef.current.setAttribute("y1", String(lineStartY));
@@ -1342,6 +1356,7 @@ function Scene({
             selectedZone={selectedZone}
             selectedDiscipline={selectedDiscipline}
             visMode={visMode}
+            elementFilter={elementFilter}
             sectionMode={sectionMode}
             activeLevelIndex={activeLevelIndex}
             onElementClick={onElementClick}

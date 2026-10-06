@@ -80,6 +80,25 @@ const STATUS_DOT: Record<string, string> = {
   "not-started": "bg-slate-300",
 };
 
+const COMPACT_LEVELS: { id: BuildingLevel; name: string; status: "complete" | "in-progress" | "not-started" | "blocked"; progress: number }[] = [
+  { id: "Roof", name: "Roof", status: "not-started", progress: 0 },
+  { id: "Level 4", name: "Level 4", status: "not-started", progress: 0 },
+  { id: "Level 3", name: "Level 3", status: "not-started", progress: 0 },
+  { id: "Level 2", name: "Level 2", status: "in-progress", progress: 60 },
+  { id: "Level 1", name: "Level 1", status: "complete", progress: 100 },
+  { id: "Ground", name: "Ground", status: "complete", progress: 100 },
+];
+
+const COMPACT_ELEMENT_FILTERS: { id: ElementFilter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "structure", label: "Structure" },
+  { id: "columns", label: "Columns" },
+  { id: "slabs", label: "Slabs" },
+  { id: "walls", label: "Walls" },
+  { id: "beams", label: "Beams" },
+  { id: "core", label: "Core" },
+];
+
 export default function Model3DPage() {
   const router = useRouter();
   const { state, setActiveView, selectTask, openDrawer } = useProgramme();
@@ -207,16 +226,44 @@ export default function Model3DPage() {
     (level: BuildingLevel) => {
       setSelectedLevel(level);
       setSelectedLevels([level]);
-      const levelEls = MODEL_ELEMENTS.filter((e) => e.level === level);
-      if (levelEls.length > 0) {
-        const matchCol = levelEls.find((e) => e.elementType === "columns");
-        const chosen = matchCol || levelEls[0];
+      const targetType =
+        elementFilter === "all" || elementFilter === "structure" ? "columns" : elementFilter;
+      const match = MODEL_ELEMENTS.find((e) => e.level === level && e.elementType === targetType);
+      const chosen = match || MODEL_ELEMENTS.find((e) => e.level === level) || null;
+      if (chosen) {
         setSelectedElement(chosen);
         const taskId = elementToTaskIdMap[chosen.id] || "task-columns";
         selectTask(taskId);
+        if (elementFilter !== "all") {
+          openDrawer(taskId);
+        }
       }
     },
-    [elementToTaskIdMap, selectTask]
+    [elementFilter, elementToTaskIdMap, selectTask, openDrawer]
+  );
+
+  const handleElementFilterSelect = useCallback(
+    (filter: ElementFilter) => {
+      setElementFilter(filter);
+      if (filter === "all") return;
+
+      const targetType = filter === "structure" ? "columns" : filter;
+      const levelMatch = MODEL_ELEMENTS.find(
+        (e) => e.level === selectedLevel && e.elementType === targetType
+      );
+      const chosen = levelMatch || MODEL_ELEMENTS.find((e) => e.elementType === targetType);
+      if (chosen) {
+        setSelectedElement(chosen);
+        setSelectedLevel(chosen.level);
+        if (!selectedLevels.includes(chosen.level)) {
+          setSelectedLevels((prev) => [...prev, chosen.level]);
+        }
+        const taskId = elementToTaskIdMap[chosen.id] || "task-columns";
+        selectTask(taskId);
+        openDrawer(taskId);
+      }
+    },
+    [selectedLevel, selectedLevels, elementToTaskIdMap, selectTask, openDrawer]
   );
 
   const toggleLevelMultiSelect = useCallback((level: string) => {
@@ -706,178 +753,103 @@ export default function Model3DPage() {
         {/* ─── 3D MODEL WORKSPACE ─── */}
         <div className="relative flex flex-1 overflow-hidden min-h-0">
 
-          {/* LEFT: Level Navigator & Hierarchy Panel (Requirement 3, 4, 18, 25) */}
-          <div className="flex flex-col shrink-0 w-[148px] border-r border-slate-200 bg-white z-20 select-none">
-            {/* Panel Tabs: Levels vs Hierarchy */}
-            <div className="flex border-b border-slate-200 bg-slate-50/50">
+          {/* LEFT: Compact Levels Panel + Element Filters (Requirement 8) */}
+          <div className="flex flex-col shrink-0 w-[160px] border-r border-slate-200 bg-white z-20 select-none overflow-y-auto">
+            {/* 1. COMPACT LEVELS SECTION */}
+            <div className="px-3 pt-2.5 pb-1 border-b border-slate-100 flex items-center justify-between">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                Levels
+              </span>
               <button
-                onClick={() => setLeftTab("levels")}
-                className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors border-b-2 ${
-                  leftTab === "levels"
-                    ? "border-blue-600 text-blue-700 bg-white"
-                    : "border-transparent text-slate-500 hover:text-slate-800"
-                }`}
+                onClick={() => setSelectedLevels(COMPACT_LEVELS.map((l) => l.id))}
+                className="text-[9.5px] text-blue-600 hover:underline font-medium"
               >
-                Levels ({currentProject.floors?.length || 0})
-              </button>
-              <button
-                onClick={() => setLeftTab("hierarchy")}
-                className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors border-b-2 ${
-                  leftTab === "hierarchy"
-                    ? "border-blue-600 text-blue-700 bg-white"
-                    : "border-transparent text-slate-500 hover:text-slate-800"
-                }`}
-              >
-                Hierarchy
+                All
               </button>
             </div>
 
-            {leftTab === "levels" ? (
-              <>
-                {/* Multi-select helper buttons */}
-                <div className="flex items-center justify-between px-2.5 py-1 border-b border-slate-100 bg-slate-50/40 text-[9.5px]">
+            <div className="flex flex-col py-1 border-b border-slate-100">
+              {COMPACT_LEVELS.map((lv) => {
+                const isSelected = selectedLevel === lv.id;
+                return (
                   <button
-                    onClick={handleSelectAllLevels}
-                    className="text-blue-600 hover:underline font-medium"
+                    key={lv.id}
+                    onClick={() => handleLevelSelect(lv.id)}
+                    className={`flex items-center justify-between px-3 py-1.5 text-left transition-colors border-l-2 cursor-pointer ${
+                      isSelected
+                        ? "bg-blue-50/90 border-blue-600 text-blue-900 font-semibold"
+                        : "border-transparent text-slate-700 hover:bg-slate-50"
+                    }`}
                   >
-                    Select All
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[lv.status] || "bg-slate-300"}`}
+                      />
+                      <span className="text-[11.5px] truncate">{lv.name}</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-slate-400 font-medium">
+                      {lv.progress}%
+                    </span>
                   </button>
+                );
+              })}
+            </div>
+
+            {/* 2. ELEMENT FILTERS SECTION */}
+            <div className="px-3 pt-2.5 pb-1 border-b border-slate-100 flex items-center justify-between">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                Elements
+              </span>
+              {elementFilter !== "all" && (
+                <button
+                  onClick={() => setElementFilter("all")}
+                  className="text-[9.5px] text-slate-400 hover:text-slate-600 font-medium"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-col py-1">
+              {COMPACT_ELEMENT_FILTERS.map((filter) => {
+                const isActive = elementFilter === filter.id;
+                return (
                   <button
-                    onClick={() => setSelectedLevels([selectedLevel])}
-                    className="text-slate-500 hover:underline"
+                    key={filter.id}
+                    onClick={() => handleElementFilterSelect(filter.id)}
+                    className={`flex items-center justify-between px-3 py-1.5 text-left transition-colors border-l-2 cursor-pointer ${
+                      isActive
+                        ? "bg-blue-50/90 border-blue-600 text-blue-900 font-semibold"
+                        : "border-transparent text-slate-700 hover:bg-slate-50"
+                    }`}
                   >
-                    Isolate
-                  </button>
-                </div>
-
-                {/* Levels list with multi-select checkboxes */}
-                <div className="flex flex-col flex-1 py-1 overflow-y-auto">
-                  {currentProject.floors?.map((lv) => {
-                    const isFocus = selectedLevel === lv.id;
-                    const isChecked = selectedLevels.includes(lv.id);
-                    return (
-                      <div
-                        key={lv.id}
-                        onClick={() => handleLevelSelect(lv.id)}
-                        className={`flex items-start gap-1.5 px-2.5 py-1.5 text-left transition-colors border-l-2 cursor-pointer ${
-                          isFocus
-                            ? "bg-blue-50/90 border-blue-600 text-blue-900"
-                            : "border-transparent hover:bg-slate-50 text-slate-600"
-                        }`}
-                      >
-                        {/* Multi-select checkbox */}
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            toggleLevelMultiSelect(lv.id);
-                          }}
-                          className="h-3.5 w-3.5 mt-0.5 rounded border-slate-300 text-blue-600 cursor-pointer"
-                        />
-
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between">
-                            <span className={`text-[11px] truncate leading-tight ${isFocus ? "font-semibold text-blue-800" : "font-medium"}`}>
-                              {lv.name}
-                            </span>
-                            <span className="text-[9.5px] font-mono text-slate-500 font-medium ml-1">
-                              {lv.progress}%
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <span
-                              className={`w-1.5 h-1.5 rounded-[1.5px] shrink-0 ${STATUS_DOT[lv.status] || "bg-slate-300"}`}
-                            />
-                            <span className="text-[9px] text-slate-400 capitalize">
-                              {lv.status === "in-progress" ? "Active" : lv.status}
-                            </span>
-                            {lv.delayedCount > 0 && (
-                              <span className="text-[8.5px] font-bold text-red-600 bg-red-50 px-1 py-0.2 rounded-xs ml-auto">
-                                ⚠ {lv.delayedCount}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Level status summary card (Requirement 25) */}
-                {selectedFloorConfig && (
-                  <div className="border-t border-slate-100 p-2.5 bg-slate-50/70">
-                    <div className="text-[9px] text-slate-400 uppercase tracking-wider mb-0.5">Floor Summary</div>
-                    <div className="text-[11.5px] font-semibold text-slate-800 leading-tight">
-                      {selectedFloorConfig.name}
-                    </div>
-                    <div className="text-[10px] text-blue-600 font-mono font-medium mt-0.5">
-                      {selectedFloorConfig.progress}% Progress
-                    </div>
-
-                    {/* Breakdown by Trade */}
-                    {selectedFloorConfig.tradeBreakdown && (
-                      <div className="mt-1.5 space-y-0.5 border-t border-slate-200/60 pt-1 text-[9px] text-slate-600">
-                        <div className="flex justify-between">
-                          <span>Structure:</span>
-                          <span className="font-mono font-medium">{selectedFloorConfig.tradeBreakdown.structure}%</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Architecture:</span>
-                          <span className="font-mono font-medium">{selectedFloorConfig.tradeBreakdown.architecture}%</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>MEP:</span>
-                          <span className="font-mono font-medium">{selectedFloorConfig.tradeBreakdown.mep}%</span>
-                        </div>
-                      </div>
+                    <span className="text-[11.5px]">{filter.label}</span>
+                    {filter.id === "columns" && selectedLevel === "Level 2" && (
+                      <span className="text-[9px] font-mono px-1 py-0.2 rounded-xs bg-blue-100/70 text-blue-700 font-medium">
+                        60%
+                      </span>
                     )}
+                  </button>
+                );
+              })}
+            </div>
 
-                    <div className="mt-1.5 pt-1 border-t border-slate-200/60 flex items-center justify-between text-[9px] text-slate-500 font-mono">
-                      <span>{selectedFloorConfig.tasksCount} Tasks</span>
-                      <span className="text-red-600 font-semibold">{selectedFloorConfig.criticalCount} Critical</span>
-                    </div>
+            {/* Selected Level Summary Card */}
+            {selectedFloorConfig && (
+              <div className="mt-auto border-t border-slate-200 p-2.5 bg-slate-50/70">
+                <div className="text-[9px] text-slate-400 uppercase tracking-wider mb-0.5">Floor Summary</div>
+                <div className="text-[11.5px] font-semibold text-slate-800 leading-tight">
+                  {selectedFloorConfig.name}
+                </div>
+                <div className="text-[10px] text-blue-600 font-mono font-medium mt-0.5">
+                  {selectedFloorConfig.progress}% Progress · {selectedFloorConfig.tasksCount} Tasks
+                </div>
+                {selectedFloorConfig.criticalCount > 0 && (
+                  <div className="mt-1 text-[9px] text-red-600 font-medium flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                    <span>{selectedFloorConfig.criticalCount} Critical on Path</span>
                   </div>
                 )}
-              </>
-            ) : (
-              /* WBS Programme Hierarchy Tree (Requirement 3) */
-              <div className="flex flex-col flex-1 p-2 overflow-y-auto text-[10.5px]">
-                <div className="font-semibold text-slate-900 flex items-center gap-1 mb-1">
-                  <Building2 className="h-3 w-3 text-blue-600" />
-                  <span className="truncate">{currentProject.name}</span>
-                </div>
-                <div className="pl-2 border-l border-slate-200 space-y-1 mt-1 text-slate-600">
-                  <div className="text-[10px] font-medium text-slate-500">
-                    {currentProject.building}
-                  </div>
-                  {currentProject.floors?.map((fl) => (
-                    <div key={fl.id} className="pl-2 border-l border-slate-100 py-0.5">
-                      <button
-                        onClick={() => handleLevelSelect(fl.id)}
-                        className={`text-left truncate hover:text-blue-600 transition-colors w-full ${
-                          selectedLevel === fl.id ? "font-bold text-blue-700" : ""
-                        }`}
-                      >
-                        {fl.name}
-                      </button>
-                      {selectedLevel === fl.id && (
-                        <div className="pl-2 mt-0.5 space-y-0.5 text-[9.5px] text-slate-400">
-                          {fl.zones.map((zn) => (
-                            <button
-                              key={zn}
-                              onClick={() => setSelectedZone(zn)}
-                              className={`block hover:text-slate-800 ${selectedZone === zn ? "text-blue-600 font-medium" : ""}`}
-                            >
-                              ↳ {zn}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
               </div>
             )}
           </div>
@@ -995,36 +967,54 @@ export default function Model3DPage() {
               )}
             </div>
 
-            {/* ─── TOP-RIGHT: View Mode Controls (3D / 2D / Top / Section) ─── */}
-            <div className="absolute top-3 right-3 z-20 flex flex-col items-end gap-1.5">
-              <div className="flex flex-col border border-slate-200 rounded-sm bg-white shadow-sm overflow-hidden">
-                {[
-                  { id: "3d" as const, label: "3D", icon: Box, onClick: () => { setViewMode("3d"); setSectionMode(false); }, active: viewMode === "3d" && !sectionMode },
-                  { id: "2d" as const, label: "2D", icon: Square, onClick: () => { setViewMode("2d"); setSectionMode(false); }, active: viewMode === "2d" },
-                  { id: "top" as const, label: "Top", icon: Navigation, onClick: () => { setViewMode("top"); setSectionMode(false); }, active: viewMode === "top" },
-                  { id: "sec" as const, label: "Sec.", icon: Layers, onClick: () => setSectionMode((s) => !s), active: sectionMode },
-                ].map((btn) => (
-                  <button
-                    key={btn.id}
-                    onClick={btn.onClick}
-                    title={btn.label}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium transition-colors border-b border-slate-100 last:border-b-0 ${
-                      btn.active
-                        ? "bg-blue-600 text-white font-semibold"
-                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                    }`}
-                  >
-                    <btn.icon className="h-3.5 w-3.5" />
-                    <span>{btn.label}</span>
-                  </button>
-                ))}
-              </div>
+            {/* ─── TOP-CENTRE: MODEL TOOLBAR (3D | 2D | Top | Section | Fit) (Requirement 8) ─── */}
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center border border-slate-200/90 bg-white/95 backdrop-blur-md rounded-sm shadow-xs overflow-hidden">
+              {[
+                { id: "3d", label: "3D", icon: Box, onClick: () => { setViewMode("3d"); setSectionMode(false); }, active: viewMode === "3d" && !sectionMode, title: "Perspective 3D View" },
+                { id: "2d", label: "2D", icon: Square, onClick: () => { setViewMode("2d"); setSectionMode(false); }, active: viewMode === "2d", title: "Elevation / 2D View" },
+                { id: "top", label: "Top", icon: Navigation, onClick: () => { setViewMode("top"); setSectionMode(false); }, active: viewMode === "top", title: "Top-down Plan View" },
+                { id: "sec", label: "Section", icon: Layers, onClick: () => setSectionMode((s) => !s), active: sectionMode, title: "Section Cut at Active Level" },
+                { id: "fit", label: "Fit", icon: Maximize2, onClick: handleFit, active: false, title: "Fit Building to Viewport" },
+              ].map((btn) => (
+                <button
+                  key={btn.id}
+                  onClick={btn.onClick}
+                  title={btn.title}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium transition-colors border-r border-slate-100 last:border-r-0 ${
+                    btn.active
+                      ? "bg-blue-600 text-white font-semibold"
+                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  <btn.icon className="h-3.5 w-3.5" />
+                  <span>{btn.label}</span>
+                </button>
+              ))}
+            </div>
 
-              {sectionMode && (
-                <div className="rounded-xs border border-blue-200 bg-blue-50 px-2 py-0.5 text-[9.5px] font-semibold text-blue-700 font-mono shadow-xs">
-                  Section Cut: {selectedLevel}
-                </div>
-              )}
+            {sectionMode && (
+              <div className="absolute top-12 left-1/2 -translate-x-1/2 z-20 rounded-xs border border-blue-200 bg-blue-50/95 backdrop-blur-md px-2.5 py-0.5 text-[9.5px] font-semibold text-blue-700 font-mono shadow-xs">
+                Section Cut: {selectedLevel}
+              </div>
+            )}
+
+            {/* Top-Right Quick Camera Actions */}
+            <div className="absolute top-3 right-3 z-20 flex items-center border border-slate-200 bg-white rounded-sm shadow-xs overflow-hidden">
+              <button
+                onClick={handleReset}
+                title="Reset Camera (R)"
+                className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 border-r border-slate-100 transition-colors"
+              >
+                <RotateCcw className="h-3 w-3" />
+                <span>Reset</span>
+              </button>
+              <button
+                onClick={handleSnapshot}
+                title="Capture 3D Snapshot"
+                className="flex items-center px-2 py-1 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-colors"
+              >
+                <Camera className="h-3.5 w-3.5" />
+              </button>
             </div>
 
             {/* ─── BOTTOM-CENTRE: Integrated Camera / Navigation Toolbar ─── */}

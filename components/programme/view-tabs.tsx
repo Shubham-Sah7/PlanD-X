@@ -2,13 +2,14 @@
 
 import { useProgramme } from "@/lib/programme-context";
 import type { ViewMode } from "@/lib/programme-types";
-import { BarChart3, Network, List, CalendarDays } from "lucide-react";
+import { BarChart3, Network, List, CalendarDays, Box } from "lucide-react";
 
 const views: { id: ViewMode; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: "gantt", label: "Gantt", icon: BarChart3 },
   { id: "network", label: "Network", icon: Network },
   { id: "list", label: "List", icon: List },
   { id: "calendar", label: "Calendar", icon: CalendarDays },
+  { id: "3d", label: "3D", icon: Box },
 ];
 
 export function ViewTabs() {
