@@ -10,6 +10,7 @@ import type {
   TaskStatus,
   Trade,
   ProgrammeTask,
+  LookaheadPeriod,
 } from "./programme-types";
 import { ALL_PROGRAMME_TASKS } from "./programme-data";
 import {
@@ -18,6 +19,43 @@ import {
   INITIAL_SITE_PHOTOS,
   INITIAL_VENDOR_UPDATES,
 } from "@/data/mock-programme";
+import {
+  ProjectCalendar,
+  STANDARD_5_DAY_CALENDAR,
+  recalculateSchedule,
+  addWorkingDays,
+  getNextWorkingDay,
+  parseIsoDate,
+  formatDateIso,
+  formatDisplayDate,
+} from "./programme-calendar";
+import {
+  type DependencyType,
+  linkTasks,
+  unlinkTasks,
+  validateDependency,
+} from "./programme-dependencies";
+import type { ImportedModelData } from "./programme-model-loader";
+import { type ProjectModelPreset, PROJECT_PRESETS } from "@/components/programme/model3d/model-data";
+import {
+  type ScheduleChangeEvent,
+  type ScheduleChangeField,
+  type ScheduleChangeSource,
+  createScheduleChangeEvent,
+  loadSavedAuditHistory,
+  saveAuditHistory,
+} from "./programme-change-tracker";
+import {
+  type BaselineSnapshot,
+  type BaselineIntegrityReport,
+  inspectBaselineIntegrity,
+  createBaselineSnapshot,
+  applyBaselineSnapshotToTasks,
+  restoreScheduleFromBaseline,
+  preserveExistingBaselinesOnImport,
+  loadSavedBaselines,
+  saveBaselines,
+} from "./programme-baseline";
 
 export type AttentionFilter =
   | "all"
@@ -82,9 +120,71 @@ interface ProgrammeContextType {
   clearFilters: () => void;
   // Task Updates
   updateTaskProgress: (taskId: string, progress: number, status?: TaskStatus) => void;
+  updateTaskSchedule: (
+    taskId: string,
+    updates: { duration?: number; startDate?: string },
+  ) => { success: boolean; error?: string; recalculatedCount?: number };
+  updateTaskDetails: (
+    taskId: string,
+    updates: {
+      name?: string;
+      description?: string;
+      status?: TaskStatus;
+      progress?: number;
+      duration?: number;
+      startDate?: string;
+      trade?: string | null;
+      costCode?: string;
+    },
+  ) => { success: boolean; error?: string; errors?: Record<string, string> };
   addTaskNote: (taskId: string, note: string) => void;
-  // Calendar
+  assignTaskResource: (
+    taskId: string,
+    resource: { name: string; initials: string; type?: "vendor" | "user" } | null,
+  ) => void;
+  // Dependencies & Lag/Lead
+  addDependency: (predId: string, succId: string, type: DependencyType, lag: number) => { success: boolean; error?: string };
+  updateDependency: (predId: string, succId: string, type: DependencyType, lag: number) => { success: boolean; error?: string };
+  removeDependency: (predId: string, succId: string) => { success: boolean; error?: string };
+  // Calendar & Working Time
   setCalendarDate: (date: string) => void;
+  projectCalendar: ProjectCalendar;
+  setProjectCalendar: (calendar: ProjectCalendar) => void;
+  applyCalendar: (calendar: ProjectCalendar) => void;
+  isCalendarModalOpen: boolean;
+  openCalendarModal: () => void;
+  closeCalendarModal: () => void;
+  // Baseline Comparison
+  showBaselineComparison: boolean;
+  setShowBaselineComparison: (show: boolean) => void;
+  toggleBaselineComparison: () => void;
+  selectedBaselineVersion: string;
+  setSelectedBaselineVersion: (ver: string) => void;
+  // Baseline Integrity & Snapshots
+  baselineSnapshots: BaselineSnapshot[];
+  baselineIntegrity: BaselineIntegrityReport;
+  takeBaselineSnapshot: (options: {
+    name: string;
+    description: string;
+    type?: "contract-baseline" | "approved-revision";
+  }) => BaselineSnapshot;
+  replaceActiveBaseline: (
+    snapshotName: string,
+    reason: string
+  ) => { success: boolean; error?: string };
+  restoreScheduleToBaseline: () => { success: boolean; restoredCount: number };
+  // Change History & Audit Trail
+  scheduleAuditLog: ScheduleChangeEvent[];
+  recordScheduleChange: (event: Omit<ScheduleChangeEvent, "id" | "timestamp">) => void;
+  clearAuditHistory: () => void;
+  // 3D Model Integration
+  importedModel: ImportedModelData | null;
+  setImportedModel: (model: ImportedModelData | null) => void;
+  activeProjectPreset: ProjectModelPreset;
+  setActiveProjectPreset: (preset: ProjectModelPreset) => void;
+  isModelUploadModalOpen: boolean;
+  openModelUploadModal: () => void;
+  closeModelUploadModal: () => void;
   // Linear Parity Features & Modals
   toastMessage: string | null;
   showToast: (msg: string) => void;
@@ -96,6 +196,7 @@ interface ProgrammeContextType {
   isImportOpen: boolean;
   openImport: () => void;
   closeImport: () => void;
+  importSchedule: (newTasks: ProgrammeTask[], calendar?: ProjectCalendar, importedProjectName?: string) => void;
   isExportOpen: boolean;
   openExport: () => void;
   closeExport: () => void;
@@ -135,6 +236,8 @@ interface ProgrammeContextType {
   setDensity: (d: "compact" | "comfortable") => void;
   lookaheadTab: "all" | "this_week" | "4_weeks" | "late" | "milestones" | "in_progress" | "critical_path";
   setLookaheadTab: (tab: "all" | "this_week" | "4_weeks" | "late" | "milestones" | "in_progress" | "critical_path") => void;
+  lookaheadPeriod: LookaheadPeriod;
+  setLookaheadPeriod: (period: LookaheadPeriod) => void;
 }
 
 const defaultFilters: FilterState = {
@@ -162,9 +265,259 @@ export function ProgrammeProvider({ children }: { children: React.ReactNode }) {
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>("month");
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
   const [attentionFilter, setAttentionFilter] = useState<AttentionFilter>("all");
-  const [tasks, setTasks] = useState<ProgrammeTask[]>(ALL_PROGRAMME_TASKS);
   const [calendarDate, setCalendarDate] = useState<string>("2025-10-15");
+  const [tasks, setTasks] = useState<ProgrammeTask[]>(() => {
+    let initial = ALL_PROGRAMME_TASKS;
+    let cal = STANDARD_5_DAY_CALENDAR;
+    if (typeof window !== "undefined") {
+      try {
+        const savedCal = localStorage.getItem("plandx_project_calendar");
+        if (savedCal) cal = JSON.parse(savedCal);
+      } catch {}
+      try {
+        const savedAssignments = localStorage.getItem("plandx_task_assignments");
+        const savedOverrides = localStorage.getItem("plandx_task_overrides");
+        const assignMap = savedAssignments ? JSON.parse(savedAssignments) : {};
+        const overrideMap = savedOverrides ? JSON.parse(savedOverrides) : {};
+
+        if (Object.keys(assignMap).length > 0 || Object.keys(overrideMap).length > 0) {
+          initial = ALL_PROGRAMME_TASKS.map((t) => {
+            let updated = { ...t };
+            if (assignMap[t.id]) {
+              updated = {
+                ...updated,
+                assignee: assignMap[t.id].assignee,
+                assigneeInitials: assignMap[t.id].assigneeInitials,
+                subcontractor: assignMap[t.id].subcontractor ?? t.subcontractor,
+              };
+            }
+            if (overrideMap[t.id]) {
+              updated = {
+                ...updated,
+                ...overrideMap[t.id],
+              };
+            }
+            return updated;
+          });
+        }
+      } catch {}
+    }
+    try {
+      return recalculateSchedule(initial, cal).updatedTasks;
+    } catch {
+      return initial;
+    }
+  });
   const [timelineScrollDate, setTimelineScrollDate] = useState<string>("2025-10-15");
+
+  // Toast Message State
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const showToast = useCallback((msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 5000);
+  }, []);
+
+  // Project Calendar & Working Days State
+  const [projectCalendar, setProjectCalendar] = useState<ProjectCalendar>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("plandx_project_calendar");
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return STANDARD_5_DAY_CALENDAR;
+  });
+  const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
+  const openCalendarModal = useCallback(() => setIsCalendarModalOpen(true), []);
+  const closeCalendarModal = useCallback(() => setIsCalendarModalOpen(false), []);
+
+  const applyCalendar = useCallback(
+    (calendar: ProjectCalendar) => {
+      setProjectCalendar(calendar);
+      try {
+        localStorage.setItem("plandx_project_calendar", JSON.stringify(calendar));
+      } catch {}
+      const result = recalculateSchedule(tasks, calendar);
+      setTasks(result.updatedTasks);
+      showToast(
+        `Applied ${calendar.name} (${calendar.workingDays.length}d week). Recalculated ${result.changeCount} task dates.`,
+      );
+      setIsCalendarModalOpen(false);
+    },
+    [tasks, showToast],
+  );
+
+  // Baseline Comparison State
+  const [showBaselineComparison, setShowBaselineComparison] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("plandx_show_baseline_comparison");
+        if (saved !== null) return JSON.parse(saved);
+      } catch {}
+    }
+    return false;
+  });
+
+  const [selectedBaselineVersion, setSelectedBaselineVersion] = useState<string>("ver-b0");
+
+  const toggleBaselineComparison = useCallback(() => {
+    setShowBaselineComparison((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("plandx_show_baseline_comparison", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  const handleSetShowBaselineComparison = useCallback((show: boolean) => {
+    setShowBaselineComparison(show);
+    try {
+      localStorage.setItem("plandx_show_baseline_comparison", JSON.stringify(show));
+    } catch {}
+  }, []);
+
+  // Baseline Snapshots and Change History State
+  const [scheduleAuditLog, setScheduleAuditLog] = useState<ScheduleChangeEvent[]>(() =>
+    loadSavedAuditHistory(),
+  );
+  const [baselineSnapshots, setBaselineSnapshots] = useState<BaselineSnapshot[]>(() =>
+    loadSavedBaselines(),
+  );
+
+  const recordScheduleChange = useCallback(
+    (params: Omit<ScheduleChangeEvent, "id" | "timestamp">) => {
+      const event = createScheduleChangeEvent(params);
+      setScheduleAuditLog((prev) => {
+        const updated = [event, ...prev];
+        saveAuditHistory(updated);
+        return updated;
+      });
+    },
+    [],
+  );
+
+  const clearAuditHistory = useCallback(() => {
+    setScheduleAuditLog([]);
+    saveAuditHistory([]);
+  }, []);
+
+  const baselineIntegrity = useMemo(() => {
+    return inspectBaselineIntegrity(tasks, projectCalendar);
+  }, [tasks, projectCalendar]);
+
+  const takeBaselineSnapshot = useCallback(
+    (options: {
+      name: string;
+      description: string;
+      type?: "contract-baseline" | "approved-revision";
+    }) => {
+      const snapshot = createBaselineSnapshot(tasks, {
+        name: options.name,
+        description: options.description,
+        approvedBy: "Demo Builder",
+        approvedByRole: "Construction Management",
+        type: options.type ?? "approved-revision",
+        versionNumber: baselineSnapshots.length,
+      });
+
+      setBaselineSnapshots((prev) => {
+        const updated = [...prev, snapshot];
+        saveBaselines(updated);
+        return updated;
+      });
+
+      recordScheduleChange({
+        taskId: "project",
+        taskName: "Programme Schedule",
+        field: "baseline",
+        fieldLabel: "Baseline Snapshot",
+        previousValue: null,
+        newValue: snapshot.name,
+        changedBy: "Demo Builder",
+        userRole: "Construction Management",
+        reason: options.description,
+        changeSource: "baseline-snapshot",
+      });
+
+      showToast(`Captured baseline snapshot: "${snapshot.name}" (${snapshot.taskCount} tasks).`);
+      return snapshot;
+    },
+    [tasks, baselineSnapshots.length, recordScheduleChange, showToast],
+  );
+
+  const replaceActiveBaseline = useCallback(
+    (snapshotName: string, reason: string) => {
+      const snapshot = createBaselineSnapshot(tasks, {
+        name: snapshotName || `Approved Revision ${baselineSnapshots.length}`,
+        description: reason || "Approved baseline re-baselined to reflect agreed change order.",
+        approvedBy: "Sarah Jenkins",
+        approvedByRole: "Contract Admin / Employer's Agent",
+        type: "approved-revision",
+        versionNumber: baselineSnapshots.length,
+      });
+
+      const updatedTasks = applyBaselineSnapshotToTasks(tasks, snapshot);
+      setTasks(updatedTasks);
+
+      setBaselineSnapshots((prev) => {
+        const updated = [...prev, snapshot];
+        saveBaselines(updated);
+        return updated;
+      });
+
+      recordScheduleChange({
+        taskId: "project",
+        taskName: "Programme Schedule",
+        field: "baseline",
+        fieldLabel: "Active Baseline Replaced",
+        previousValue: "Baseline 0 (Contract)",
+        newValue: snapshot.name,
+        changedBy: "Sarah Jenkins",
+        userRole: "Contract Admin",
+        reason,
+        changeSource: "baseline-snapshot",
+      });
+
+      showToast(`Active baseline replaced with "${snapshot.name}". All variances recalculated against new baseline.`);
+      return { success: true };
+    },
+    [tasks, baselineSnapshots.length, recordScheduleChange, showToast],
+  );
+
+  const restoreScheduleToBaseline = useCallback(() => {
+    const { restoredTasks, restoredCount } = restoreScheduleFromBaseline(tasks, projectCalendar);
+    setTasks(restoredTasks);
+
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem("plandx_task_overrides");
+      } catch {}
+    }
+
+    recordScheduleChange({
+      taskId: "project",
+      taskName: "Programme Schedule",
+      field: "startDate",
+      fieldLabel: "Schedule Restored",
+      previousValue: "Working Forecast",
+      newValue: "Baseline 0 Dates",
+      changedBy: "Demo Builder",
+      userRole: "Construction Management",
+      reason: "Restored working schedule dates and durations back to approved contract baseline.",
+      changeSource: "restored-baseline",
+    });
+
+    showToast(`Restored ${restoredCount} tasks back to approved Baseline 0 dates.`);
+    return { success: true, restoredCount };
+  }, [tasks, projectCalendar, recordScheduleChange, showToast]);
+
+  // 3D Model Integration State
+  const [importedModel, setImportedModel] = useState<ImportedModelData | null>(null);
+  const [activeProjectPreset, setActiveProjectPreset] = useState<ProjectModelPreset>(PROJECT_PRESETS[0]);
+  const [isModelUploadModalOpen, setIsModelUploadModalOpen] = useState<boolean>(false);
+  const openModelUploadModal = useCallback(() => setIsModelUploadModalOpen(true), []);
+  const closeModelUploadModal = useCallback(() => setIsModelUploadModalOpen(false), []);
 
   // Network View specific state
   const [criticalPathActive, setCriticalPathActive] = useState<boolean>(true);
@@ -265,8 +618,12 @@ export function ProgrammeProvider({ children }: { children: React.ReactNode }) {
 
   const updateTaskProgress = useCallback(
     (taskId: string, progress: number, status?: TaskStatus) => {
-      setTasks((prev) =>
-        prev.map((t) => {
+      const targetTask = tasks.find((t) => t.id === taskId);
+      const prevProgress = targetTask?.progress ?? 0;
+      const prevStatus = targetTask?.status ?? "not-started";
+
+      setTasks((prev) => {
+        const updated = prev.map((t) => {
           if (t.id !== taskId) return t;
           const newStatus =
             status || (progress >= 100 ? "complete" : progress > 0 ? "in-progress" : "not-started");
@@ -275,10 +632,363 @@ export function ProgrammeProvider({ children }: { children: React.ReactNode }) {
             progress,
             status: newStatus,
           };
-        }),
-      );
+        });
+
+        if (typeof window !== "undefined") {
+          try {
+            const saved = localStorage.getItem("plandx_task_overrides");
+            const map = saved ? JSON.parse(saved) : {};
+            const t = updated.find((x) => x.id === taskId);
+            if (t) {
+              map[taskId] = { ...(map[taskId] || {}), progress: t.progress, status: t.status };
+              localStorage.setItem("plandx_task_overrides", JSON.stringify(map));
+            }
+          } catch {}
+        }
+
+        return updated;
+      });
+
+      if (targetTask && prevProgress !== progress) {
+        recordScheduleChange({
+          taskId,
+          taskName: targetTask.name,
+          wbs: targetTask.wbs,
+          field: "progress",
+          fieldLabel: "Progress",
+          previousValue: `${prevProgress}%`,
+          newValue: `${progress}%`,
+          changedBy: "Demo Builder",
+          userRole: "Construction Management",
+          changeSource: "user-edit",
+        });
+      }
+      if (targetTask && status && prevStatus !== status) {
+        recordScheduleChange({
+          taskId,
+          taskName: targetTask.name,
+          wbs: targetTask.wbs,
+          field: "status",
+          fieldLabel: "Status",
+          previousValue: prevStatus,
+          newValue: status,
+          changedBy: "Demo Builder",
+          userRole: "Construction Management",
+          changeSource: "user-edit",
+        });
+      }
     },
-    [],
+    [tasks, recordScheduleChange],
+  );
+
+  const updateTaskSchedule = useCallback(
+    (taskId: string, updates: { duration?: number; startDate?: string }) => {
+      const target = tasks.find((t) => t.id === taskId);
+      if (!target) {
+        showToast("Task not found.");
+        return { success: false, error: "Task not found." };
+      }
+
+      if (updates.duration !== undefined && (isNaN(updates.duration) || updates.duration < 0)) {
+        showToast("Duration must be a positive number of working days.");
+        return { success: false, error: "Duration must be >= 0." };
+      }
+
+      let newStartDate = target.startDate;
+      if (updates.startDate) {
+        const parsed = parseIsoDate(updates.startDate);
+        if (isNaN(parsed.getTime())) {
+          showToast("Invalid start date provided.");
+          return { success: false, error: "Invalid start date." };
+        }
+        const snapped = getNextWorkingDay(parsed, projectCalendar);
+        newStartDate = formatDateIso(snapped);
+      }
+
+      const newDuration = updates.duration !== undefined ? updates.duration : target.duration;
+      const isMilestone = newDuration === 0;
+
+      const updatedTasks = tasks.map((t) => {
+        if (t.id === taskId) {
+          return {
+            ...t,
+            startDate: newStartDate,
+            manualStartDate: updates.startDate ? newStartDate : t.manualStartDate,
+            duration: newDuration,
+            isMilestone,
+          };
+        }
+        return t;
+      });
+
+      const result = recalculateSchedule(updatedTasks, projectCalendar);
+      setTasks(result.updatedTasks);
+
+      const updatedTarget = result.updatedTasks.find((t) => t.id === taskId);
+      const startDisp = updatedTarget?.displayStart || newStartDate;
+      const endDisp = updatedTarget?.displayEnd || "";
+
+      // Record schedule change events
+      if (updates.duration !== undefined && updates.duration !== target.duration) {
+        recordScheduleChange({
+          taskId: target.id,
+          taskName: target.name,
+          wbs: target.wbs,
+          field: "duration",
+          fieldLabel: "Duration",
+          previousValue: `${target.duration}d`,
+          newValue: `${newDuration}d`,
+          changedBy: "Demo Builder",
+          userRole: "Construction Management",
+          reason: "Manual duration update via task scheduler.",
+          changeSource: "user-edit",
+        });
+      }
+      if (updates.startDate && updates.startDate !== target.startDate) {
+        recordScheduleChange({
+          taskId: target.id,
+          taskName: target.name,
+          wbs: target.wbs,
+          field: "startDate",
+          fieldLabel: "Start Date",
+          previousValue: target.startDate,
+          newValue: newStartDate,
+          changedBy: "Demo Builder",
+          userRole: "Construction Management",
+          reason: "Manual start date shift.",
+          changeSource: "user-edit",
+        });
+      }
+      if (updatedTarget && updatedTarget.endDate !== target.endDate) {
+        recordScheduleChange({
+          taskId: target.id,
+          taskName: target.name,
+          wbs: target.wbs,
+          field: "endDate",
+          fieldLabel: "Finish Date",
+          previousValue: target.endDate,
+          newValue: updatedTarget.endDate,
+          changedBy: "PlanD-X CPM Engine",
+          userRole: "Topological Recalculation",
+          reason: "Recalculated finish date from duration and working calendar.",
+          changeSource: "cpm-recalculation",
+        });
+      }
+
+      if (typeof window !== "undefined") {
+        try {
+          const saved = localStorage.getItem("plandx_task_overrides");
+          const map = saved ? JSON.parse(saved) : {};
+          if (updatedTarget) {
+            map[taskId] = {
+              ...(map[taskId] || {}),
+              startDate: updatedTarget.startDate,
+              manualStartDate: updatedTarget.manualStartDate,
+              duration: updatedTarget.duration,
+              isMilestone: updatedTarget.isMilestone,
+            };
+            localStorage.setItem("plandx_task_overrides", JSON.stringify(map));
+          }
+        } catch {}
+      }
+
+      showToast(
+        `Updated schedule for '${target.name}': ${newDuration}d (${startDisp} → ${endDisp}). Recalculated ${result.changeCount} task dates.`
+      );
+
+      return {
+        success: true,
+        recalculatedCount: result.changeCount,
+      };
+    },
+    [tasks, projectCalendar, recordScheduleChange, showToast],
+  );
+
+  const updateTaskDetails = useCallback(
+    (
+      taskId: string,
+      updates: {
+        name?: string;
+        description?: string;
+        status?: TaskStatus;
+        progress?: number;
+        duration?: number;
+        startDate?: string;
+        trade?: string | null;
+        costCode?: string;
+      },
+    ) => {
+      const target = tasks.find((t) => t.id === taskId);
+      if (!target) {
+        showToast("Task not found.");
+        return { success: false, error: "Task not found." };
+      }
+
+      const errors: Record<string, string> = {};
+
+      if (updates.name !== undefined && !updates.name.trim()) {
+        errors.name = "Task name cannot be empty.";
+      }
+
+      if (
+        updates.progress !== undefined &&
+        (isNaN(updates.progress) || updates.progress < 0 || updates.progress > 100)
+      ) {
+        errors.progress = "Progress must be between 0% and 100%.";
+      }
+
+      if (updates.duration !== undefined && (isNaN(updates.duration) || updates.duration < 0)) {
+        errors.duration = "Duration must be 0 or more working days.";
+      }
+
+      let newStartDate = target.startDate;
+      if (updates.startDate) {
+        const parsed = parseIsoDate(updates.startDate);
+        if (isNaN(parsed.getTime())) {
+          errors.startDate = "Invalid start date format (must be YYYY-MM-DD).";
+        } else {
+          const snapped = getNextWorkingDay(parsed, projectCalendar);
+          newStartDate = formatDateIso(snapped);
+        }
+      }
+
+      if (Object.keys(errors).length > 0) {
+        return { success: false, error: "Validation failed.", errors };
+      }
+
+      const newDuration = updates.duration !== undefined ? updates.duration : target.duration;
+      const isMilestone = newDuration === 0;
+
+      // Handle progress & status auto-sync
+      let newProgress = updates.progress !== undefined ? updates.progress : target.progress;
+      let newStatus = updates.status !== undefined ? updates.status : target.status;
+      if (updates.progress !== undefined && updates.status === undefined) {
+        if (newProgress >= 100) newStatus = "complete";
+        else if (newProgress > 0 && target.status === "not-started") newStatus = "in-progress";
+      } else if (updates.status !== undefined && updates.progress === undefined) {
+        if (newStatus === "complete") newProgress = 100;
+        else if (newStatus === "not-started") newProgress = 0;
+      }
+
+      const updatedTasks = tasks.map((t) => {
+        if (t.id === taskId) {
+          return {
+            ...t,
+            name: updates.name !== undefined ? updates.name.trim() : t.name,
+            description: updates.description !== undefined ? updates.description : t.description,
+            status: newStatus,
+            progress: newProgress,
+            trade: updates.trade !== undefined ? updates.trade : t.trade,
+            costCode: updates.costCode !== undefined ? updates.costCode : t.costCode,
+            startDate: newStartDate,
+            manualStartDate: updates.startDate ? newStartDate : t.manualStartDate,
+            duration: newDuration,
+            isMilestone,
+          };
+        }
+        return t;
+      });
+
+      const needsRecalculation =
+        updates.duration !== undefined || updates.startDate !== undefined;
+      let finalTasks = updatedTasks;
+      let changeCount = 0;
+
+      if (needsRecalculation) {
+        const result = recalculateSchedule(updatedTasks, projectCalendar);
+        finalTasks = result.updatedTasks;
+        changeCount = result.changeCount;
+      }
+
+      setTasks(finalTasks);
+
+      // Record field-level audit change events
+      if (updates.name !== undefined && updates.name.trim() !== target.name) {
+        recordScheduleChange({
+          taskId: target.id,
+          taskName: target.name,
+          wbs: target.wbs,
+          field: "name",
+          fieldLabel: "Activity Name",
+          previousValue: target.name,
+          newValue: updates.name.trim(),
+          changedBy: "Demo Builder",
+          userRole: "Construction Management",
+          changeSource: "user-edit",
+        });
+      }
+      if (updates.duration !== undefined && updates.duration !== target.duration) {
+        recordScheduleChange({
+          taskId: target.id,
+          taskName: target.name,
+          wbs: target.wbs,
+          field: "duration",
+          fieldLabel: "Duration",
+          previousValue: `${target.duration}d`,
+          newValue: `${newDuration}d`,
+          changedBy: "Demo Builder",
+          userRole: "Construction Management",
+          changeSource: "user-edit",
+        });
+      }
+      if (updates.progress !== undefined && updates.progress !== target.progress) {
+        recordScheduleChange({
+          taskId: target.id,
+          taskName: target.name,
+          wbs: target.wbs,
+          field: "progress",
+          fieldLabel: "Progress",
+          previousValue: `${target.progress}%`,
+          newValue: `${newProgress}%`,
+          changedBy: "Demo Builder",
+          userRole: "Construction Management",
+          changeSource: "user-edit",
+        });
+      }
+      if (updates.startDate && updates.startDate !== target.startDate) {
+        recordScheduleChange({
+          taskId: target.id,
+          taskName: target.name,
+          wbs: target.wbs,
+          field: "startDate",
+          fieldLabel: "Start Date",
+          previousValue: target.startDate,
+          newValue: newStartDate,
+          changedBy: "Demo Builder",
+          userRole: "Construction Management",
+          changeSource: "user-edit",
+        });
+      }
+
+      // Persist overrides to localStorage
+      if (typeof window !== "undefined") {
+        try {
+          const saved = localStorage.getItem("plandx_task_overrides");
+          const map = saved ? JSON.parse(saved) : {};
+          const updatedT = finalTasks.find((t) => t.id === taskId);
+          if (updatedT) {
+            map[taskId] = {
+              ...(map[taskId] || {}),
+              name: updatedT.name,
+              description: updatedT.description,
+              status: updatedT.status,
+              progress: updatedT.progress,
+              trade: updatedT.trade,
+              costCode: updatedT.costCode,
+              startDate: updatedT.startDate,
+              manualStartDate: updatedT.manualStartDate,
+              duration: updatedT.duration,
+              isMilestone: updatedT.isMilestone,
+            };
+            localStorage.setItem("plandx_task_overrides", JSON.stringify(map));
+          }
+        } catch {}
+      }
+
+      showToast(`Saved changes for '${updates.name?.trim() || target.name}'.`);
+      return { success: true };
+    },
+    [tasks, projectCalendar, recordScheduleChange, showToast],
   );
 
   const addTaskNote = useCallback((taskId: string, note: string) => {
@@ -293,8 +1003,174 @@ export function ProgrammeProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
+  const assignTaskResource = useCallback(
+    (
+      taskId: string,
+      resource: { name: string; initials: string; type?: "vendor" | "user" } | null,
+    ) => {
+      let taskName = "";
+      const target = tasks.find((t) => t.id === taskId);
+      const prevAssignee = target?.assignee || target?.subcontractor || null;
+      const newAssignee = resource ? resource.name : null;
+
+      setTasks((prev) => {
+        const updated = prev.map((t) => {
+          if (t.id === taskId) {
+            taskName = t.name;
+            return {
+              ...t,
+              assignee: resource ? resource.name : null,
+              assigneeInitials: resource ? resource.initials : "",
+              subcontractor:
+                resource?.type === "vendor"
+                  ? resource.name
+                  : resource
+                  ? resource.name
+                  : null,
+            };
+          }
+          return t;
+        });
+
+        if (typeof window !== "undefined") {
+          try {
+            const saved = localStorage.getItem("plandx_task_assignments");
+            const map = saved ? JSON.parse(saved) : {};
+            if (resource) {
+              map[taskId] = {
+                assignee: resource.name,
+                assigneeInitials: resource.initials,
+                subcontractor:
+                  resource.type === "vendor" ? resource.name : resource.name,
+              };
+            } else {
+              map[taskId] = {
+                assignee: null,
+                assigneeInitials: "",
+                subcontractor: null,
+              };
+            }
+            localStorage.setItem("plandx_task_assignments", JSON.stringify(map));
+          } catch {}
+        }
+
+        return updated;
+      });
+
+      if (target && prevAssignee !== newAssignee) {
+        recordScheduleChange({
+          taskId: target.id,
+          taskName: target.name,
+          wbs: target.wbs,
+          field: "resource",
+          fieldLabel: "Subcontractor / Assignee",
+          previousValue: prevAssignee,
+          newValue: newAssignee,
+          changedBy: "Demo Builder",
+          userRole: "Construction Management",
+          changeSource: "user-edit",
+        });
+      }
+
+      if (resource) {
+        showToast(`Assigned ${resource.name} to ${taskName || taskId}.`);
+      } else {
+        showToast(`Cleared assignment for ${taskName || taskId}.`);
+      }
+    },
+    [tasks, recordScheduleChange, showToast],
+  );
+
+  // Dependency Operations
+  const addDependency = useCallback(
+    (predId: string, succId: string, type: DependencyType, lag: number) => {
+      const validation = validateDependency(tasks, predId, succId, type, lag);
+      if (!validation.valid) {
+        showToast(`Cannot link: ${validation.error}`);
+        return { success: false, error: validation.error };
+      }
+
+      const result = linkTasks(tasks, predId, succId, type, lag, projectCalendar);
+      setTasks(result.updatedTasks);
+
+      const predTask = tasks.find((t) => t.id === predId);
+      const succTask = tasks.find((t) => t.id === succId);
+      recordScheduleChange({
+        taskId: succId,
+        taskName: succTask?.name || succId,
+        wbs: succTask?.wbs,
+        field: "predecessors",
+        fieldLabel: "Predecessor Linked",
+        previousValue: null,
+        newValue: `${predTask?.name || predId} (${type}+${lag}d)`,
+        changedBy: "Demo Builder",
+        userRole: "Construction Management",
+        changeSource: "user-edit",
+      });
+
+      showToast(
+        `Linked ${type} (${lag >= 0 ? `+${lag}d lag` : `${lag}d lead`}). Recalculated ${result.changeCount} task dates.`
+      );
+      return { success: true };
+    },
+    [tasks, projectCalendar, recordScheduleChange, showToast],
+  );
+
+  const updateDependency = useCallback(
+    (predId: string, succId: string, type: DependencyType, lag: number) => {
+      const result = linkTasks(tasks, predId, succId, type, lag, projectCalendar);
+      setTasks(result.updatedTasks);
+
+      const predTask = tasks.find((t) => t.id === predId);
+      const succTask = tasks.find((t) => t.id === succId);
+      recordScheduleChange({
+        taskId: succId,
+        taskName: succTask?.name || succId,
+        wbs: succTask?.wbs,
+        field: "predecessors",
+        fieldLabel: "Dependency Updated",
+        previousValue: null,
+        newValue: `${predTask?.name || predId} (${type}+${lag}d)`,
+        changedBy: "Demo Builder",
+        userRole: "Construction Management",
+        changeSource: "user-edit",
+      });
+
+      showToast(
+        `Updated dependency to ${type} (${lag >= 0 ? `+${lag}d lag` : `${lag}d lead`}). Recalculated ${result.changeCount} task dates.`
+      );
+      return { success: true };
+    },
+    [tasks, projectCalendar, recordScheduleChange, showToast],
+  );
+
+  const removeDependency = useCallback(
+    (predId: string, succId: string) => {
+      const result = unlinkTasks(tasks, predId, succId, projectCalendar);
+      setTasks(result.updatedTasks);
+
+      const predTask = tasks.find((t) => t.id === predId);
+      const succTask = tasks.find((t) => t.id === succId);
+      recordScheduleChange({
+        taskId: succId,
+        taskName: succTask?.name || succId,
+        wbs: succTask?.wbs,
+        field: "predecessors",
+        fieldLabel: "Predecessor Removed",
+        previousValue: `${predTask?.name || predId}`,
+        newValue: null,
+        changedBy: "Demo Builder",
+        userRole: "Construction Management",
+        changeSource: "user-edit",
+      });
+
+      showToast(`Removed dependency link. Recalculated ${result.changeCount} task dates.`);
+      return { success: true };
+    },
+    [tasks, projectCalendar, recordScheduleChange, showToast],
+  );
+
   // Linear Parity States
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [currentScreen, setCurrentScreen] = useState<"builder" | "vendor_portal" | "first_time">("builder");
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -313,17 +1189,54 @@ export function ProgrammeProvider({ children }: { children: React.ReactNode }) {
   const [showDuplicateBanner, setShowDuplicateBanner] = useState(true);
   const [density, setDensity] = useState<"compact" | "comfortable">("compact");
   const [lookaheadTab, setLookaheadTab] = useState<"all" | "this_week" | "4_weeks" | "late" | "milestones" | "in_progress" | "critical_path">("all");
-
-  const showToast = useCallback((msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 5000);
-  }, []);
+  const [lookaheadPeriod, setLookaheadPeriod] = useState<LookaheadPeriod>("2-weeks");
 
   const openAddTask = useCallback(() => setIsAddTaskOpen(true), []);
   const closeAddTask = useCallback(() => setIsAddTaskOpen(false), []);
 
   const openImport = useCallback(() => setIsImportOpen(true), []);
   const closeImport = useCallback(() => setIsImportOpen(false), []);
+
+  const importSchedule = useCallback(
+    (newTasks: ProgrammeTask[], calendar?: ProjectCalendar, importedProjectName?: string) => {
+      const targetCalendar = calendar || projectCalendar;
+      if (calendar) {
+        setProjectCalendar(calendar);
+        try {
+          localStorage.setItem("plandx_project_calendar", JSON.stringify(calendar));
+        } catch {}
+      }
+
+      // Preserve baseline integrity: protect existing approved baseline dates if incoming tasks don't specify them
+      const baselineSafeTasks = preserveExistingBaselinesOnImport(newTasks, tasks);
+      const recalculated = recalculateSchedule(baselineSafeTasks, targetCalendar);
+      setTasks(recalculated.updatedTasks);
+      if (recalculated.updatedTasks.length > 0) {
+        setSelectedTaskId(recalculated.updatedTasks[0].id);
+      }
+      setIsImportOpen(false);
+
+      recordScheduleChange({
+        taskId: "project",
+        taskName: importedProjectName || "Imported Programme",
+        field: "startDate",
+        fieldLabel: "Schedule Import",
+        previousValue: `${tasks.length} tasks`,
+        newValue: `${recalculated.updatedTasks.length} tasks`,
+        changedBy: "Demo Builder",
+        userRole: "Construction Management",
+        reason: "Imported schedule dataset. Approved baseline dates preserved.",
+        changeSource: "schedule-import",
+      });
+
+      showToast(
+        `Imported ${recalculated.updatedTasks.length} tasks${
+          importedProjectName ? ` ("${importedProjectName}")` : ""
+        }. Baseline dates protected & schedule recalculated via PlanD-X CPM engine.`
+      );
+    },
+    [projectCalendar, setProjectCalendar, tasks, recordScheduleChange, showToast]
+  );
 
   const openExport = useCallback(() => setIsExportOpen(true), []);
   const closeExport = useCallback(() => setIsExportOpen(false), []);
@@ -441,6 +1354,13 @@ export function ProgrammeProvider({ children }: { children: React.ReactNode }) {
   }, [modalTask, showToast]);
 
   const addTask = useCallback((taskData: any) => {
+    const duration = taskData.isMilestone ? 0 : 5;
+    const startDate = taskData.startDate || "2025-10-01";
+    const endDateObj = addWorkingDays(startDate, duration, projectCalendar);
+    const endDate = formatDateIso(endDateObj);
+    const displayStart = formatDisplayDate(startDate);
+    const displayEnd = formatDisplayDate(endDateObj);
+
     const newTask: ProgrammeTask = {
       id: `PRG-${Math.floor(820 + Math.random() * 100)}`,
       wbs: "1.3.6.3",
@@ -448,11 +1368,11 @@ export function ProgrammeProvider({ children }: { children: React.ReactNode }) {
       level: taskData.isMilestone ? "milestone" : "task",
       parentId: "task-columns",
       status: "not-started",
-      startDate: taskData.startDate || "2025-10-01",
-      endDate: taskData.endDate || "2025-10-05",
-      displayStart: "01 Oct 25",
-      displayEnd: "05 Oct 25",
-      duration: taskData.isMilestone ? 0 : 5,
+      startDate,
+      endDate,
+      displayStart,
+      displayEnd,
+      duration,
       progress: 0,
       trade: "Structural",
       costCode: taskData.costCode !== "Not linked" ? taskData.costCode.slice(0, 4) : undefined,
@@ -470,7 +1390,7 @@ export function ProgrammeProvider({ children }: { children: React.ReactNode }) {
     showToast(`Added new task: ${taskData.name}`);
     setSelectedTaskId(newTask.id);
     setDrawerOpen(true);
-  }, [showToast]);
+  }, [projectCalendar, showToast]);
 
   const dismissDuplicateBanner = useCallback(() => setShowDuplicateBanner(false), []);
   const cleanupDuplicates = useCallback(() => {
@@ -549,8 +1469,44 @@ export function ProgrammeProvider({ children }: { children: React.ReactNode }) {
       setFocusPreset,
       clearFilters,
       updateTaskProgress,
+      updateTaskSchedule,
+      updateTaskDetails,
       addTaskNote,
+      assignTaskResource,
+      addDependency,
+      updateDependency,
+      removeDependency,
       setCalendarDate,
+      projectCalendar,
+      setProjectCalendar,
+      applyCalendar,
+      isCalendarModalOpen,
+      openCalendarModal,
+      closeCalendarModal,
+      // Baseline Comparison
+      showBaselineComparison,
+      setShowBaselineComparison: handleSetShowBaselineComparison,
+      toggleBaselineComparison,
+      selectedBaselineVersion,
+      setSelectedBaselineVersion,
+      // Baseline Integrity & Snapshots
+      baselineSnapshots,
+      baselineIntegrity,
+      takeBaselineSnapshot,
+      replaceActiveBaseline,
+      restoreScheduleToBaseline,
+      // Change History & Audit Trail
+      scheduleAuditLog,
+      recordScheduleChange,
+      clearAuditHistory,
+      // 3D Model Integration
+      importedModel,
+      setImportedModel,
+      activeProjectPreset,
+      setActiveProjectPreset,
+      isModelUploadModalOpen,
+      openModelUploadModal,
+      closeModelUploadModal,
       // Linear Parity Exports
       toastMessage,
       showToast,
@@ -562,6 +1518,7 @@ export function ProgrammeProvider({ children }: { children: React.ReactNode }) {
       isImportOpen,
       openImport,
       closeImport,
+      importSchedule,
       isExportOpen,
       openExport,
       closeExport,
@@ -601,10 +1558,13 @@ export function ProgrammeProvider({ children }: { children: React.ReactNode }) {
       setDensity,
       lookaheadTab,
       setLookaheadTab,
+      lookaheadPeriod,
+      setLookaheadPeriod,
     }),
     [
       uiState,
       setActiveView,
+      locateIn3D,
       selectTask,
       openDrawer,
       closeDrawer,
@@ -634,8 +1594,83 @@ export function ProgrammeProvider({ children }: { children: React.ReactNode }) {
       setFocusPreset,
       clearFilters,
       updateTaskProgress,
+      updateTaskSchedule,
+      updateTaskDetails,
       addTaskNote,
+      assignTaskResource,
+      addDependency,
+      updateDependency,
+      removeDependency,
       setCalendarDate,
+      projectCalendar,
+      setProjectCalendar,
+      applyCalendar,
+      isCalendarModalOpen,
+      openCalendarModal,
+      closeCalendarModal,
+      showBaselineComparison,
+      handleSetShowBaselineComparison,
+      toggleBaselineComparison,
+      selectedBaselineVersion,
+      setSelectedBaselineVersion,
+      baselineSnapshots,
+      baselineIntegrity,
+      takeBaselineSnapshot,
+      replaceActiveBaseline,
+      restoreScheduleToBaseline,
+      scheduleAuditLog,
+      recordScheduleChange,
+      clearAuditHistory,
+      importedModel,
+      activeProjectPreset,
+      isModelUploadModalOpen,
+      openModelUploadModal,
+      closeModelUploadModal,
+      isImportOpen,
+      openImport,
+      closeImport,
+      importSchedule,
+      isExportOpen,
+      openExport,
+      closeExport,
+      isRevisionsOpen,
+      openRevisions,
+      closeRevisions,
+      isVendorInboxOpen,
+      openVendorInbox,
+      closeVendorInbox,
+      toggleVendorInbox,
+      isAssignOwnerOpen,
+      openAssignOwner,
+      closeAssignOwner,
+      isContactCardOpen,
+      openContactCard,
+      closeContactCard,
+      isLinkCostCodeOpen,
+      openLinkCostCode,
+      closeLinkCostCode,
+      isPhotoPickerOpen,
+      openPhotoPicker,
+      closePhotoPicker,
+      modalTask,
+      vendorUpdates,
+      owners,
+      costCodes,
+      sitePhotos,
+      acceptVendorUpdate,
+      sendBackVendorUpdate,
+      assignOwner,
+      linkCostCode,
+      addTask,
+      showDuplicateBanner,
+      dismissDuplicateBanner,
+      cleanupDuplicates,
+      density,
+      setDensity,
+      lookaheadTab,
+      setLookaheadTab,
+      lookaheadPeriod,
+      setLookaheadPeriod,
     ],
   );
 

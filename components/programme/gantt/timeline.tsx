@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import type { ProgrammeTask } from "@/lib/programme-types";
 import { useProgramme } from "@/lib/programme-context";
+import { getTaskPredecessorLinks } from "@/lib/programme-dependencies";
 import {
   AlertCircle,
   Compass,
@@ -10,7 +11,10 @@ import {
   ZoomIn,
   ZoomOut,
   X,
+  GitCompare,
+  Flame,
 } from "lucide-react";
+import { calculateScheduleVariance, formatVarianceDisplay } from "@/lib/programme-calendar";
 
 interface MonthDef {
   key: string;
@@ -50,8 +54,23 @@ function dateToX(dateStr?: string, monthWidth = 76): number {
   return Math.max(0, monthDiff * monthWidth + (dayOfMonth / daysInMonth) * monthWidth);
 }
 
-export function Timeline({ tasks }: { tasks: ProgrammeTask[] }) {
-  const { state, selectTask, criticalPathActive } = useProgramme();
+export function Timeline({
+  tasks,
+  scrollRef,
+  onScroll,
+}: {
+  tasks: ProgrammeTask[];
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
+  onScroll?: (e: React.UIEvent<HTMLDivElement>) => void;
+}) {
+  const {
+    state,
+    selectTask,
+    criticalPathActive,
+    showBaselineComparison,
+    selectedBaselineVersion,
+    projectCalendar,
+  } = useProgramme();
   const [showNavigator, setShowNavigator] = useState<boolean>(false);
   const [hoveredTask, setHoveredTask] = useState<{
     task: ProgrammeTask;
@@ -88,112 +107,33 @@ export function Timeline({ tasks }: { tasks: ProgrammeTask[] }) {
     label: string;
     hasMilestone?: boolean;
   } => {
-    let baseLeft = 0;
-    let baseWidth = 40;
+    // Dynamic calculation based on task dates, reflecting calendar and working days
+    const startX = Math.round(dateToX(task.startDate, monthWidth));
+    const endX = Math.round(dateToX(task.endDate, monthWidth));
+    let baseLeft = Math.round(startX / scale);
+    let baseWidth = Math.max(Math.round((endX - startX) / scale), task.isMilestone ? 18 : 24);
     let type = "task-blue";
     let label = `${task.name} ${task.progress}%`;
     let hasMilestone = false;
 
-    switch (task.id) {
-      case "task-site-est":
-        baseLeft = 4;
-        baseWidth = 44;
-        type = "complete-green";
-        label = "Site Establishment 100%";
-        break;
-      case "task-earthworks":
-        baseLeft = 48;
-        baseWidth = 72;
-        type = "complete-green";
-        label = "Earthworks 82%";
-        break;
-      case "task-superstructure":
-        baseLeft = 116;
-        baseWidth = 386;
-        type = "summary-bracket";
-        label = "Superstructure 68%";
-        hasMilestone = true;
-        break;
-      case "task-level-1":
-        baseLeft = 116;
-        baseWidth = 154;
-        type = "task-blue";
-        label = "Level 1 100%";
-        break;
-      case "task-level-2":
-        baseLeft = 270;
-        baseWidth = 172;
-        type = "task-blue";
-        label = "Level 2 46%";
-        break;
-      case "task-columns":
-        baseLeft = 270 + (rescheduledTaskId === "task-columns" ? rescheduleDelta : 0);
-        baseWidth = 92;
-        type = "selected-columns";
-        label = "Level 2 - Columns";
-        hasMilestone = true;
-        break;
-      case "task-blockwork":
-        baseLeft = 362;
-        baseWidth = 56;
-        type = "task-blue";
-        label = "25%";
-        break;
-      case "task-slab":
-        baseLeft = 422;
-        baseWidth = 46;
-        type = "task-gray";
-        label = "0%";
-        break;
-      case "task-level-3":
-        baseLeft = 472;
-        baseWidth = 178;
-        type = "task-gray";
-        label = "Level 3 0%";
-        break;
-      case "task-level-4":
-        baseLeft = 654;
-        baseWidth = 84;
-        type = "task-gray";
-        label = "Level 4 0%";
-        break;
-      case "task-facade":
-        baseLeft = 520;
-        baseWidth = 236;
-        type = "task-blue";
-        label = "Façade 34%";
-        break;
-      case "task-fitout":
-        baseLeft = 556;
-        baseWidth = 398;
-        type = "task-gray";
-        label = "Fitout 0%";
-        break;
-      case "task-external-works":
-        baseLeft = 958;
-        baseWidth = 104;
-        type = "task-gray";
-        label = "External Works 0%";
-        break;
-      case "task-completion":
-        baseLeft = 1066;
-        baseWidth = 20;
-        type = "milestone-diamond";
-        label = "Completion ◆";
-        break;
-      default: {
-        // Dynamic calculation based on task dates
-        const startX = Math.round(dateToX(task.startDate, monthWidth));
-        const endX = Math.round(dateToX(task.endDate, monthWidth));
-        baseLeft = Math.round(startX / scale);
-        baseWidth = Math.max(Math.round((endX - startX) / scale), task.isMilestone ? 18 : 36);
-
-        if (task.level === "phase") type = "summary-bracket";
-        else if (task.isMilestone || task.duration === 0) type = "milestone-diamond";
-        else if (task.progress >= 100) type = "complete-green";
-        else if (task.progress === 0) type = "task-gray";
-        break;
-      }
+    if (task.id === "task-columns") {
+      baseLeft += (rescheduledTaskId === "task-columns" ? rescheduleDelta : 0);
+      type = "selected-columns";
+      label = "Level 2 - Columns";
+      hasMilestone = true;
+    } else if (task.level === "phase" || task.id === "task-superstructure") {
+      type = "summary-bracket";
+      label = `${task.name} ${task.progress}%`;
+      hasMilestone = true;
+    } else if (task.isMilestone || task.duration === 0 || task.id === "task-completion") {
+      type = "milestone-diamond";
+      label = task.name + (task.progress >= 100 ? " 100%" : " ◆");
+    } else if (task.progress >= 100) {
+      type = "complete-green";
+      label = `${task.name} 100%`;
+    } else if (task.progress === 0) {
+      type = "task-gray";
+      label = `${task.name} 0%`;
     }
 
     return {
@@ -205,19 +145,77 @@ export function Timeline({ tasks }: { tasks: ProgrammeTask[] }) {
     };
   };
 
-  // Planned dependency link connections between predecessor finish and successor start
-  const dependencyLinks = [
-    { pred: "task-site-est", succ: "task-earthworks" },
-    { pred: "task-earthworks", succ: "task-superstructure" },
-    { pred: "task-level-1", succ: "task-level-2" },
-    { pred: "task-columns", succ: "task-blockwork" },
-    { pred: "task-blockwork", succ: "task-slab" },
-    { pred: "task-slab", succ: "task-level-3" },
-    { pred: "task-level-3", succ: "task-level-4" },
-    { pred: "task-level-4", succ: "task-facade" },
-    { pred: "task-facade", succ: "task-fitout" },
-    { pred: "task-fitout", succ: "task-completion" },
-  ];
+  // Baseline 0 Bar coordinates & variance calculation
+  const getBaselineBarCoords = (
+    task: ProgrammeTask,
+  ): {
+    left: number;
+    width: number;
+    hasBaseline: boolean;
+    isMilestone?: boolean;
+    varianceDays: number;
+    isDelayed: boolean;
+    isAhead: boolean;
+  } | null => {
+    if (!task.baseline0Start || !task.baseline0Finish) {
+      return null;
+    }
+
+    const startX = Math.round(dateToX(task.baseline0Start, monthWidth));
+    const endX = Math.round(dateToX(task.baseline0Finish, monthWidth));
+    const baseLeft = Math.round(startX / scale);
+    const baseWidth = Math.max(Math.round((endX - startX) / scale), task.isMilestone ? 14 : 18);
+    const variance = calculateScheduleVariance(task, projectCalendar);
+
+    return {
+      left: Math.round(baseLeft * scale),
+      width: Math.round(baseWidth * scale),
+      hasBaseline: true,
+      isMilestone: task.isMilestone || task.duration === 0 || task.id === "task-completion",
+      varianceDays: variance.finishVariance,
+      isDelayed: variance.isDelayed,
+      isAhead: variance.isAhead,
+    };
+  };
+
+  // Planned & dynamic dependency link connections
+  const dependencyLinks = useMemo(() => {
+    const links: { pred: string; succ: string; type: "FS" | "SS" | "FF" | "SF"; lag: number }[] = [];
+    const seen = new Set<string>();
+
+    for (const task of tasks) {
+      const preds = getTaskPredecessorLinks(task);
+      for (const p of preds) {
+        const key = `${p.id}->${task.id}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          links.push({
+            pred: p.id,
+            succ: task.id,
+            type: p.type || "FS",
+            lag: p.lag || 0,
+          });
+        }
+      }
+    }
+
+    if (links.length === 0) {
+      return [
+        { pred: "task-site-est", succ: "task-earthworks", type: "FS" as const, lag: 0 },
+        { pred: "task-earthworks", succ: "task-superstructure", type: "FS" as const, lag: 0 },
+        { pred: "task-level-1", succ: "task-level-2", type: "FS" as const, lag: 0 },
+        { pred: "task-columns", succ: "task-blockwork", type: "FS" as const, lag: 0 },
+        { pred: "task-blockwork", succ: "task-slab", type: "FS" as const, lag: 0 },
+        { pred: "task-slab", succ: "task-level-3", type: "FS" as const, lag: 0 },
+        { pred: "task-level-3", succ: "task-level-4", type: "FS" as const, lag: 0 },
+        { pred: "task-level-4", succ: "task-facade", type: "FS" as const, lag: 0 },
+        { pred: "task-facade", succ: "task-fitout", type: "FS" as const, lag: 0 },
+        { pred: "task-fitout", succ: "task-completion", type: "FS" as const, lag: 0 },
+      ];
+    }
+
+    return links;
+  }, [tasks]);
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-white select-none min-w-0 relative">
@@ -258,12 +256,16 @@ export function Timeline({ tasks }: { tasks: ProgrammeTask[] }) {
       )}
 
       {/* Scrollable Timeline Area */}
-      <div className="flex-1 overflow-x-auto overflow-y-auto relative">
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="flex-1 overflow-x-auto overflow-y-auto relative"
+      >
         <div style={{ width: `${totalWidth}px` }} className="relative min-h-full">
           {/* Timeline Header */}
           <div className="sticky top-0 z-20 border-b border-slate-200 bg-white">
             {/* Row 1: Years */}
-            <div className="flex h-5 border-b border-slate-100 text-[10.5px] font-semibold text-slate-400">
+            <div className="flex h-5 border-b border-slate-100 text-[10.5px] font-bold text-slate-500 uppercase tracking-wider">
               <div style={{ width: `${monthWidth * 4}px` }} className="pl-3 flex items-center">
                 2025
               </div>
@@ -273,7 +275,7 @@ export function Timeline({ tasks }: { tasks: ProgrammeTask[] }) {
             </div>
 
             {/* Row 2: Months + Today Badge */}
-            <div className="flex h-6 items-center text-[11px] font-medium text-slate-500 relative">
+            <div className="flex h-6 items-center text-[11px] font-semibold text-slate-600 relative">
               {MONTHS.map((m) => (
                 <div
                   key={m.key}
@@ -355,9 +357,22 @@ export function Timeline({ tasks }: { tasks: ProgrammeTask[] }) {
               const pCoords = getTaskBarCoords(pTask);
               const sCoords = getTaskBarCoords(sTask);
 
-              const x1 = pCoords.left + pCoords.width;
+              let x1: number;
+              let x2: number;
+              if (link.type === "SS") {
+                x1 = pCoords.left;
+                x2 = sCoords.left;
+              } else if (link.type === "FF") {
+                x1 = pCoords.left + pCoords.width;
+                x2 = sCoords.left + sCoords.width;
+              } else if (link.type === "SF") {
+                x1 = pCoords.left;
+                x2 = sCoords.left + sCoords.width;
+              } else {
+                x1 = pCoords.left + pCoords.width;
+                x2 = sCoords.left;
+              }
               const y1 = pIndex * 40 + 20;
-              const x2 = sCoords.left;
               const y2 = sIndex * 40 + 20;
 
               const isDirectlyConnected =
@@ -366,7 +381,7 @@ export function Timeline({ tasks }: { tasks: ProgrammeTask[] }) {
               const isCriticalLink = criticalPathActive && (pTask.isCritical || link.pred === "task-columns") && (sTask.isCritical || link.succ === "task-columns");
               const isDimmed = (state.selectedTaskId && !isDirectlyConnected) || (criticalPathActive && !isCriticalLink);
 
-              // Smooth curved connection from predecessor finish to successor start
+              // Smooth curved connection according to relationship geometry
               const d =
                 x2 >= x1
                   ? `M ${x1} ${y1} C ${x1 + 16} ${y1}, ${x2 - 16} ${y2}, ${x2} ${y2}`
@@ -387,17 +402,43 @@ export function Timeline({ tasks }: { tasks: ProgrammeTask[] }) {
                 : "url(#arrowhead-default)";
 
               return (
-                <path
-                  key={`dep-${idx}`}
-                  d={d}
-                  fill="none"
-                  stroke={strokeColor}
-                  strokeWidth={isCriticalLink ? 2.5 : isDirectlyConnected ? 2.5 : 1.5}
-                  opacity={isDimmed ? 0.3 : 1}
-                  markerEnd={markerEnd}
-                  strokeLinecap="round"
-                  className="transition-all duration-200"
-                />
+                <g key={`dep-g-${idx}`}>
+                  <path
+                    d={d}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={isCriticalLink ? 2.5 : isDirectlyConnected ? 2.5 : 1.5}
+                    opacity={isDimmed ? 0.3 : 1}
+                    markerEnd={markerEnd}
+                    strokeLinecap="round"
+                    className="transition-all duration-200"
+                  />
+                  {link.type !== "FS" && !isDimmed && (
+                    <g transform={`translate(${(x1 + x2) / 2}, ${(y1 + y2) / 2})`}>
+                      <rect
+                        x="-10"
+                        y="-7"
+                        width="20"
+                        height="14"
+                        rx="3"
+                        fill="#ffffff"
+                        stroke={strokeColor}
+                        strokeWidth="1"
+                      />
+                      <text
+                        x="0"
+                        y="3.5"
+                        textAnchor="middle"
+                        fontSize="9"
+                        fontWeight="bold"
+                        fill={strokeColor}
+                        fontFamily="monospace"
+                      >
+                        {link.type}
+                      </text>
+                    </g>
+                  )}
+                </g>
               );
             })}
           </svg>
@@ -407,8 +448,11 @@ export function Timeline({ tasks }: { tasks: ProgrammeTask[] }) {
             {tasks.map((task) => {
               const coords = getTaskBarCoords(task);
               const isSelected = state.selectedTaskId === task.id;
-              const isCritical = task.isCritical || task.id === "task-columns";
+              const isCritical = Boolean(task.isCritical || (typeof task.float === "number" && task.float <= 0));
               const isDimmed = criticalPathActive && !isCritical;
+
+              const isDualTrack = Boolean(showBaselineComparison);
+              const baselineCoords = isDualTrack ? getBaselineBarCoords(task) : null;
 
               return (
                 <div
@@ -429,15 +473,17 @@ export function Timeline({ tasks }: { tasks: ProgrammeTask[] }) {
                   {/* Complete Green Bar */}
                   {coords.type === "complete-green" && (
                     <div
-                      className="absolute h-5 rounded-xs bg-emerald-500 transition-all flex items-center px-2 group"
+                      className={`absolute rounded-xs bg-emerald-500 transition-all flex items-center px-2 group z-15 ${
+                        isCritical ? "border-t-2 border-rose-500 shadow-xs" : ""
+                      } ${isDualTrack ? "top-1 h-3.5" : "h-5"}`}
                       style={{
                         left: `${coords.left}px`,
                         width: `${coords.width}px`,
                       }}
                     >
-                      {/* Technical Label Beside Bar */}
-                      <span className="absolute left-full ml-2 inline-flex items-center rounded-xs bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-700 border border-slate-200 whitespace-nowrap pointer-events-none z-20">
-                        {coords.label}
+                      <span className="relative z-10 text-[9.5px] font-semibold text-white tracking-tight truncate w-full text-center flex items-center justify-center gap-1">
+                        {isCritical && <Flame className="h-2.5 w-2.5 text-white/90 shrink-0" />}
+                        <span>{coords.label}</span>
                       </span>
                     </div>
                   )}
@@ -445,7 +491,9 @@ export function Timeline({ tasks }: { tasks: ProgrammeTask[] }) {
                   {/* Summary Bracket Bar */}
                   {coords.type === "summary-bracket" && (
                     <div
-                      className="absolute h-3.5 rounded-xs bg-blue-600 flex items-center"
+                      className={`absolute rounded-xs bg-blue-600 flex items-center z-15 ${
+                        isCritical ? "border-t-2 border-rose-500" : ""
+                      } ${isDualTrack ? "top-1 h-3" : "h-3.5"}`}
                       style={{
                         left: `${coords.left}px`,
                         width: `${coords.width}px`,
@@ -465,13 +513,15 @@ export function Timeline({ tasks }: { tasks: ProgrammeTask[] }) {
                   {/* Selected Task Bar (Level 2 - Columns) */}
                   {coords.type === "selected-columns" && (
                     <div
-                      className="absolute h-6 rounded-xs border-2 border-blue-600 bg-blue-100/95 flex items-center justify-between px-2 text-blue-900 font-semibold text-[10px] tracking-tight transition-all relative overflow-visible z-20"
+                      className={`absolute rounded-xs border-2 border-blue-600 bg-blue-100/95 flex items-center justify-between px-2 text-blue-950 font-bold text-[10px] tracking-tight transition-all relative overflow-visible z-20 ${
+                        isCritical ? "border-t-4 border-t-rose-600" : ""
+                      } ${isDualTrack ? "top-0.5 h-4.5" : "h-6"}`}
                       style={{
                         left: `${coords.left}px`,
                         width: `${coords.width}px`,
                       }}
                     >
-                      {/* Reschedule Handle (Drag simulation from Linear NUR-180) */}
+                      {/* Reschedule Handle */}
                       <button
                         type="button"
                         onClick={(e) => {
@@ -487,7 +537,7 @@ export function Timeline({ tasks }: { tasks: ProgrammeTask[] }) {
                           }
                         }}
                         title={rescheduleDelta > 0 ? "Reset reschedule" : "Simulate reschedule delay (+3d)"}
-                        className="absolute -left-2 top-1/2 -translate-y-1/2 flex h-4 w-4 items-center justify-center rounded-xs bg-white border border-blue-600 text-blue-700 hover:bg-blue-50 text-[8px] font-mono font-bold z-30 cursor-pointer"
+                        className="absolute -left-2 top-1/2 -translate-y-1/2 flex h-3.5 w-3.5 items-center justify-center rounded-xs bg-white border border-blue-600 text-blue-700 hover:bg-blue-50 text-[7.5px] font-mono font-bold z-30 cursor-pointer"
                       >
                         {rescheduleDelta > 0 ? "+3" : "⋮⋮"}
                       </button>
@@ -498,14 +548,15 @@ export function Timeline({ tasks }: { tasks: ProgrammeTask[] }) {
                         style={{ width: `${task.progress}%` }}
                       />
 
-                      {/* Text Label inside bar - fits cleanly without truncation */}
-                      <span className="relative z-10 whitespace-nowrap pr-1 pl-1">
-                        {coords.label}
+                      {/* Text Label inside bar */}
+                      <span className="relative z-10 whitespace-nowrap pr-1 pl-1 truncate font-bold text-blue-950 flex items-center gap-1">
+                        {isCritical && <Flame className="h-3 w-3 text-rose-600 shrink-0" />}
+                        <span>{coords.label}</span>
                       </span>
 
                       {/* Milestone Diamond at finish edge */}
                       {coords.hasMilestone && (
-                        <div className="absolute -right-2 h-3.5 w-3.5 rotate-45 bg-slate-800 z-20" />
+                        <div className="absolute -right-2 h-3 w-3 rotate-45 bg-slate-800 z-20" />
                       )}
                     </div>
                   )}
@@ -513,7 +564,9 @@ export function Timeline({ tasks }: { tasks: ProgrammeTask[] }) {
                   {/* In-Progress Blue Task Bar */}
                   {coords.type === "task-blue" && (
                     <div
-                      className="absolute h-5 rounded-xs bg-blue-500 transition-all hover:bg-blue-600 flex items-center px-2 relative group overflow-visible z-15"
+                      className={`absolute rounded-xs bg-blue-500 transition-all hover:bg-blue-600 flex items-center px-2 relative group overflow-visible z-15 ${
+                        isCritical ? "border-t-2 border-rose-500 shadow-xs" : ""
+                      } ${isDualTrack ? "top-1 h-3.5" : "h-5"}`}
                       style={{
                         left: `${coords.left}px`,
                         width: `${coords.width}px`,
@@ -526,8 +579,9 @@ export function Timeline({ tasks }: { tasks: ProgrammeTask[] }) {
                       />
 
                       {/* Text label cleanly centered inside bar */}
-                      <span className="relative z-10 text-[10px] font-medium text-white truncate w-full text-center">
-                        {coords.label}
+                      <span className="relative z-10 text-[9.5px] font-semibold text-white tracking-tight truncate w-full text-center flex items-center justify-center gap-1">
+                        {isCritical && <Flame className="h-2.5 w-2.5 text-white/90 shrink-0" />}
+                        <span>{coords.label}</span>
                       </span>
                     </div>
                   )}
@@ -535,15 +589,17 @@ export function Timeline({ tasks }: { tasks: ProgrammeTask[] }) {
                   {/* Not Started / Future Gray Task Bar */}
                   {coords.type === "task-gray" && (
                     <div
-                      className="absolute h-5 rounded-xs border border-slate-300 bg-slate-200/80 flex items-center px-2 relative group overflow-visible z-15"
+                      className={`absolute rounded-xs border border-slate-300 bg-slate-200/80 flex items-center px-2 relative group overflow-visible z-15 ${
+                        isCritical ? "border-t-2 border-rose-500 shadow-xs" : ""
+                      } ${isDualTrack ? "top-1 h-3.5" : "h-5"}`}
                       style={{
                         left: `${coords.left}px`,
                         width: `${coords.width}px`,
                       }}
                     >
-                      {/* Label cleanly inside bar */}
-                      <span className="relative z-10 text-[10px] font-medium text-slate-600 truncate w-full text-center">
-                        {coords.label}
+                      <span className="relative z-10 text-[9.5px] font-semibold text-slate-700 tracking-tight truncate w-full text-center flex items-center justify-center gap-1">
+                        {isCritical && <Flame className="h-2.5 w-2.5 text-rose-600 shrink-0" />}
+                        <span>{coords.label}</span>
                       </span>
                     </div>
                   )}
@@ -551,14 +607,91 @@ export function Timeline({ tasks }: { tasks: ProgrammeTask[] }) {
                   {/* Milestone Diamond Bar */}
                   {coords.type === "milestone-diamond" && (
                     <div
-                      className="absolute flex items-center z-20"
+                      className={`absolute flex items-center z-20 ${isDualTrack ? "top-1" : ""}`}
                       style={{ left: `${coords.left}px` }}
                     >
-                      <div className="h-4 w-4 rotate-45 bg-amber-500 ring-2 ring-white" />
-                      <span className="ml-3 whitespace-nowrap text-[11px] font-semibold text-slate-800">
-                        {coords.label}
+                      <div className={`h-3.5 w-3.5 rotate-45 bg-amber-500 ring-2 ${isCritical ? "ring-rose-500" : "ring-white"}`} />
+                      <span className="ml-2.5 whitespace-nowrap text-[11px] font-semibold text-slate-800 flex items-center gap-1">
+                        {isCritical && <Flame className="h-3 w-3 text-rose-600 shrink-0" />}
+                        <span>{coords.label}</span>
                       </span>
                     </div>
+                  )}
+
+                  {/* Dual-Track Baseline Reference Bar */}
+                  {isDualTrack && baselineCoords && (
+                    <>
+                      {/* Translucent Delay Band connecting baseline finish to current finish */}
+                      {baselineCoords.varianceDays > 0 && (
+                        <div
+                          className="absolute top-1 bottom-1.5 rounded-xs bg-amber-500/15 border-t border-b border-dashed border-amber-500/60 pointer-events-none z-8"
+                          style={{
+                            left: `${Math.min(baselineCoords.left + baselineCoords.width, coords.left + coords.width)}px`,
+                            width: `${Math.max(4, Math.abs((coords.left + coords.width) - (baselineCoords.left + baselineCoords.width)))}px`,
+                          }}
+                        />
+                      )}
+
+                      {/* Baseline Solid/Hatched Bar */}
+                      {baselineCoords.isMilestone ? (
+                        <div
+                          className="absolute bottom-1 h-3 w-3 rotate-45 border-2 border-slate-600 bg-slate-400 z-12"
+                          style={{ left: `${baselineCoords.left}px` }}
+                          title={`Baseline 0 Milestone: ${task.baseline0Start}`}
+                        />
+                      ) : (
+                        <div
+                          className="absolute bottom-1.5 h-2.5 rounded-xs border border-slate-500/80 z-10 overflow-visible"
+                          style={{
+                            left: `${baselineCoords.left}px`,
+                            width: `${baselineCoords.width}px`,
+                            backgroundImage:
+                              "repeating-linear-gradient(45deg, rgba(148, 163, 184, 0.95), rgba(148, 163, 184, 0.95) 3px, rgba(100, 116, 139, 0.95) 3px, rgba(100, 116, 139, 0.95) 6px)",
+                          }}
+                          title={`Baseline 0: ${task.baseline0Start} → ${task.baseline0Finish}`}
+                        >
+                          {/* Left and right bracket caps */}
+                          <span className="absolute -top-1 left-0 h-4 w-0.5 bg-slate-600 rounded-full" />
+                          <span className="absolute -top-1 right-0 h-4 w-0.5 bg-slate-600 rounded-full" />
+                        </div>
+                      )}
+
+                      {/* Variance Indicator Badge at finish edge */}
+                      <span
+                        className={`absolute inline-flex items-center rounded px-1.5 py-0.5 text-[9.5px] font-mono font-bold whitespace-nowrap z-25 border shadow-2xs ${
+                          baselineCoords.varianceDays > 0
+                            ? baselineCoords.varianceDays >= 5
+                              ? "bg-red-50 text-red-700 border-red-300"
+                              : "bg-amber-50 text-amber-800 border-amber-300"
+                            : baselineCoords.varianceDays < 0
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                            : "bg-slate-50 text-slate-500 border-slate-200"
+                        }`}
+                        style={{
+                          left: `${Math.max(coords.left + coords.width, baselineCoords.left + baselineCoords.width) + 6}px`,
+                          top: "2px",
+                        }}
+                      >
+                        {baselineCoords.varianceDays > 0
+                          ? `+${baselineCoords.varianceDays}d`
+                          : baselineCoords.varianceDays < 0
+                          ? `${baselineCoords.varianceDays}d`
+                          : "0d"}
+                      </span>
+                    </>
+                  )}
+
+                  {/* Task with No Baseline Indicator */}
+                  {isDualTrack && !baselineCoords && (
+                    <span
+                      className="absolute text-[9px] text-slate-300 font-mono italic whitespace-nowrap pointer-events-none"
+                      style={{
+                        left: `${coords.left + coords.width + 8}px`,
+                        top: "12px",
+                      }}
+                    >
+                      No baseline
+                    </span>
                   )}
                 </div>
               );
@@ -613,18 +746,61 @@ export function Timeline({ tasks }: { tasks: ProgrammeTask[] }) {
       {/* Hover Floating Tooltip */}
       {hoveredTask && (
         <div
-          className="fixed z-50 pointer-events-none -translate-x-1/2 -translate-y-full rounded-xs border border-slate-700 bg-slate-900 px-2.5 py-1 text-white shadow-md"
+          className="fixed z-50 pointer-events-none -translate-x-1/2 -translate-y-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-white shadow-xl max-w-xs select-none"
           style={{ left: `${hoveredTask.x}px`, top: `${hoveredTask.y}px` }}
         >
-          <div className="text-[11px] font-semibold">{hoveredTask.task.name}</div>
-          <div className="mt-0.5 flex items-center gap-2 text-[10px] text-slate-300 font-mono">
-            <span>{hoveredTask.task.displayStart}</span>
-            <span>→</span>
-            <span>{hoveredTask.task.displayEnd}</span>
-            <span>·</span>
-            <span className="font-semibold text-emerald-400">
-              {hoveredTask.task.progress}% done
-            </span>
+          <div className="text-[12px] font-semibold text-white truncate">{hoveredTask.task.name}</div>
+          <div className="mt-1 space-y-1 text-[10.5px] font-mono">
+            <div className="flex items-center justify-between gap-3 text-slate-300">
+              <span className="text-slate-400">Current:</span>
+              <span className="font-medium text-white">
+                {hoveredTask.task.displayStart || hoveredTask.task.startDate} → {hoveredTask.task.displayEnd || hoveredTask.task.endDate} ({hoveredTask.task.duration}d)
+              </span>
+            </div>
+            {hoveredTask.task.baseline0Start && hoveredTask.task.baseline0Finish ? (
+              <>
+                <div className="flex items-center justify-between gap-3 text-slate-300">
+                  <span className="text-slate-400">Baseline 0:</span>
+                  <span className="font-medium text-slate-200">
+                    {hoveredTask.task.baseline0Start} → {hoveredTask.task.baseline0Finish}
+                  </span>
+                </div>
+                {(() => {
+                  const v = calculateScheduleVariance(hoveredTask.task, projectCalendar);
+                  const disp = formatVarianceDisplay(v.finishVariance);
+                  return (
+                    <div className="flex items-center justify-between gap-3 pt-1 mt-1 border-t border-slate-700/80">
+                      <span className="text-slate-400">Variance:</span>
+                      <span
+                        className={`font-semibold px-1 py-0.2 rounded text-[10px] ${
+                          v.finishVariance > 0
+                            ? "bg-amber-950/80 text-amber-300"
+                            : v.finishVariance < 0
+                            ? "bg-emerald-950/80 text-emerald-300"
+                            : "bg-slate-800 text-slate-300"
+                        }`}
+                      >
+                        {disp.label}
+                      </span>
+                    </div>
+                  );
+                })()}
+              </>
+            ) : (
+              <div className="text-[10px] text-slate-400 italic pt-0.5">No baseline reference saved</div>
+            )}
+            <div className="flex items-center justify-between gap-3 text-slate-300 pt-1 mt-1 border-t border-slate-700/80">
+              <span className="text-slate-400">Total / Free Float:</span>
+              <span className="font-medium text-white">
+                {hoveredTask.task.float ?? 0}d / {hoveredTask.task.freeFloat ?? hoveredTask.task.float ?? 0}d
+              </span>
+            </div>
+            {hoveredTask.task.isCritical && (
+              <div className="flex items-center gap-1.5 text-rose-400 font-semibold pt-0.5 text-[10.5px]">
+                <Flame className="h-3 w-3 text-rose-500" />
+                <span>Critical Path Activity</span>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -653,6 +829,25 @@ export function Timeline({ tasks }: { tasks: ProgrammeTask[] }) {
             <div className="h-2 w-2 rotate-45 bg-slate-800" />
             <span>Milestone</span>
           </div>
+
+          {showBaselineComparison && (
+            <div className="flex items-center gap-3 pl-3 border-l border-slate-200">
+              <div className="flex items-center gap-1.5">
+                <div
+                  className="h-2 w-4 rounded-xs border border-slate-500/80"
+                  style={{
+                    backgroundImage:
+                      "repeating-linear-gradient(45deg, rgba(148, 163, 184, 0.95), rgba(148, 163, 184, 0.95) 2px, rgba(100, 116, 139, 0.95) 2px, rgba(100, 116, 139, 0.95) 4px)",
+                  }}
+                />
+                <span className="font-semibold text-slate-700">Baseline 0</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-xs bg-amber-500" />
+                <span className="font-semibold text-amber-700">Schedule Slip</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Center / Right: Navigator Toggle + Zoom Controls + Task Count */}

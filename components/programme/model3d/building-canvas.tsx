@@ -23,6 +23,7 @@ import {
   PROJECT_PRESETS,
   getElementsForLevel,
 } from "./model-data";
+import type { ImportedModelData } from "@/lib/programme-model-loader";
 
 // ─── Status & Programme Visualization Palette Resolver ─────────────────────────
 function getElementStatusColors(
@@ -322,6 +323,7 @@ function SlabMesh({
   element,
   onClick,
   onDoubleClick,
+  wireframe = false,
 }: {
   elevation: number;
   level: BuildingLevel;
@@ -332,6 +334,7 @@ function SlabMesh({
   element?: ModelElement;
   onClick: (e: any) => void;
   onDoubleClick?: (e: any) => void;
+  wireframe?: boolean;
 }) {
   const isComplete = level === "Level 1" || level === "Ground" || level === "Basement 1";
   const defaultStatus = isComplete ? "complete" : "not-started";
@@ -353,6 +356,7 @@ function SlabMesh({
       <boxGeometry args={[BUILDING_W, SLAB_T, BUILDING_D]} />
       <meshStandardMaterial
         color={color}
+        wireframe={wireframe}
         roughness={0.62}
         metalness={0.05}
         emissive={isSelected ? "#0066ff" : "#000000"}
@@ -376,6 +380,7 @@ function ColumnsMesh({
   element,
   onClick,
   onDoubleClick,
+  wireframe = false,
 }: {
   floorBaseElevation: number;
   floorHeight?: number;
@@ -388,6 +393,7 @@ function ColumnsMesh({
   element?: ModelElement;
   onClick: (e: any) => void;
   onDoubleClick?: (e: any) => void;
+  wireframe?: boolean;
 }) {
   const colH = floorHeight - SLAB_T;
   const colY = floorBaseElevation + SLAB_T + colH / 2;
@@ -437,6 +443,7 @@ function ColumnsMesh({
                 <boxGeometry args={[COL_W, colH, COL_W]} />
                 <meshStandardMaterial
                   color={colColor}
+                  wireframe={wireframe}
                   roughness={0.48}
                   metalness={0.08}
                   emissive={isSelected ? "#0066ff" : "#000000"}
@@ -474,6 +481,7 @@ function BeamsMesh({
   visMode = "status",
   element,
   onClick,
+  wireframe = false,
 }: {
   floorBaseElevation: number;
   floorHeight?: number;
@@ -483,6 +491,7 @@ function BeamsMesh({
   visMode?: VisualizationMode;
   element?: ModelElement;
   onClick: (e: any) => void;
+  wireframe?: boolean;
 }) {
   const beamY = floorBaseElevation + floorHeight - BEAM_H / 2;
   const color = !isLevelActive ? "#f1f5f9" : isSelected ? "#0066ff" : "#e2e8f0";
@@ -492,22 +501,22 @@ function BeamsMesh({
     <group onClick={onClick}>
       <mesh position={[0, beamY, -BUILDING_D / 2 + BEAM_W / 2]} castShadow>
         <boxGeometry args={[BUILDING_W, BEAM_H, BEAM_W]} />
-        <meshStandardMaterial color={color} roughness={0.7} />
+        <meshStandardMaterial color={color} wireframe={wireframe} roughness={0.7} />
         <Edges color={edgeColor} threshold={15} />
       </mesh>
       <mesh position={[0, beamY, BUILDING_D / 2 - BEAM_W / 2]} castShadow>
         <boxGeometry args={[BUILDING_W, BEAM_H, BEAM_W]} />
-        <meshStandardMaterial color={color} roughness={0.7} />
+        <meshStandardMaterial color={color} wireframe={wireframe} roughness={0.7} />
         <Edges color={edgeColor} threshold={15} />
       </mesh>
       <mesh position={[-BUILDING_W / 2 + BEAM_W / 2, beamY, 0]} castShadow>
         <boxGeometry args={[BEAM_W, BEAM_H, BUILDING_D]} />
-        <meshStandardMaterial color={color} roughness={0.7} />
+        <meshStandardMaterial color={color} wireframe={wireframe} roughness={0.7} />
         <Edges color={edgeColor} threshold={15} />
       </mesh>
       <mesh position={[BUILDING_W / 2 - BEAM_W / 2, beamY, 0]} castShadow>
         <boxGeometry args={[BEAM_W, BEAM_H, BUILDING_D]} />
-        <meshStandardMaterial color={color} roughness={0.7} />
+        <meshStandardMaterial color={color} wireframe={wireframe} roughness={0.7} />
         <Edges color={edgeColor} threshold={15} />
       </mesh>
     </group>
@@ -527,6 +536,7 @@ function CoreMesh({
   element,
   onClick,
   onDoubleClick,
+  wireframe = false,
 }: {
   floorBaseElevation: number;
   floorHeight?: number;
@@ -539,6 +549,7 @@ function CoreMesh({
   element?: ModelElement;
   onClick: (e: any) => void;
   onDoubleClick?: (e: any) => void;
+  wireframe?: boolean;
 }) {
   const coreH = floorHeight - SLAB_T;
   const coreY = floorBaseElevation + SLAB_T + coreH / 2;
@@ -571,6 +582,7 @@ function CoreMesh({
         <boxGeometry args={[CORE_W, coreH, CORE_D]} />
         <meshStandardMaterial
           color={color}
+          wireframe={wireframe}
           roughness={0.58}
           metalness={0.06}
           emissive={isSelected || (isLevelActive && isLevel2) ? "#ef4444" : "#000000"}
@@ -710,11 +722,13 @@ function RoofAssembly({
   isSectioned,
   isLevelActive,
   isAnyLevelActive,
+  wireframe = false,
 }: {
   elevation: number;
   isSectioned: boolean;
   isLevelActive: boolean;
   isAnyLevelActive: boolean;
+  wireframe?: boolean;
 }) {
   if (isSectioned) return null;
   const opacity = isAnyLevelActive && !isLevelActive ? 0.20 : 1.0;
@@ -725,7 +739,7 @@ function RoofAssembly({
       {/* Roof slab */}
       <mesh position={[0, SLAB_T / 2, 0]} castShadow={!transparent} receiveShadow>
         <boxGeometry args={[BUILDING_W + 0.1, SLAB_T, BUILDING_D + 0.1]} />
-        <meshStandardMaterial color="#cbd5e1" roughness={0.7} transparent={transparent} opacity={opacity} />
+        <meshStandardMaterial color="#cbd5e1" wireframe={wireframe} roughness={0.7} transparent={transparent} opacity={opacity} />
         <Edges color={transparent ? "#cbd5e1" : "#94a3b8"} threshold={15} />
       </mesh>
 
@@ -788,6 +802,7 @@ function FloorAssembly({
   activeLevelIndex,
   onElementClick,
   onElementDoubleClick,
+  wireframe = false,
 }: {
   floor: FloorConfig;
   floorIndex: number;
@@ -803,6 +818,7 @@ function FloorAssembly({
   activeLevelIndex: number;
   onElementClick: (el: ModelElement) => void;
   onElementDoubleClick?: (el: ModelElement) => void;
+  wireframe?: boolean;
 }) {
   if (sectionMode && floorIndex > activeLevelIndex) {
     return null;
@@ -844,6 +860,7 @@ function FloorAssembly({
             e.stopPropagation();
             onElementDoubleClick?.(slabEl);
           }}
+          wireframe={wireframe}
         />
       )}
 
@@ -852,22 +869,22 @@ function FloorAssembly({
         <group position={[0, baseElevation + SLAB_T + floor.height / 2, 0]}>
           <mesh position={[0, 0, -BUILDING_D / 2]}>
             <boxGeometry args={[BUILDING_W, floor.height, 0.4]} />
-            <meshStandardMaterial color="#475569" roughness={0.9} />
+            <meshStandardMaterial color="#475569" wireframe={wireframe} roughness={0.9} />
             <Edges color="#334155" threshold={15} />
           </mesh>
           <mesh position={[0, 0, BUILDING_D / 2]}>
             <boxGeometry args={[BUILDING_W, floor.height, 0.4]} />
-            <meshStandardMaterial color="#475569" roughness={0.9} />
+            <meshStandardMaterial color="#475569" wireframe={wireframe} roughness={0.9} />
             <Edges color="#334155" threshold={15} />
           </mesh>
           <mesh position={[-BUILDING_W / 2, 0, 0]}>
             <boxGeometry args={[0.4, floor.height, BUILDING_D]} />
-            <meshStandardMaterial color="#475569" roughness={0.9} />
+            <meshStandardMaterial color="#475569" wireframe={wireframe} roughness={0.9} />
             <Edges color="#334155" threshold={15} />
           </mesh>
           <mesh position={[BUILDING_W / 2, 0, 0]}>
             <boxGeometry args={[0.4, floor.height, BUILDING_D]} />
-            <meshStandardMaterial color="#475569" roughness={0.9} />
+            <meshStandardMaterial color="#475569" wireframe={wireframe} roughness={0.9} />
             <Edges color="#334155" threshold={15} />
           </mesh>
         </group>
@@ -893,6 +910,7 @@ function FloorAssembly({
             e.stopPropagation();
             onElementDoubleClick?.(colEl);
           }}
+          wireframe={wireframe}
         />
       )}
 
@@ -910,6 +928,7 @@ function FloorAssembly({
             e.stopPropagation();
             onElementClick(beamEl);
           }}
+          wireframe={wireframe}
         />
       )}
 
@@ -933,6 +952,7 @@ function FloorAssembly({
             e.stopPropagation();
             onElementDoubleClick?.(coreEl);
           }}
+          wireframe={wireframe}
         />
       )}
 
@@ -1186,18 +1206,20 @@ function CameraController({
   currentProject,
   isDrawerOpen,
   controlsRef,
+  compactPreview = false,
 }: {
   viewMode: string;
   selectedLevel: string;
   currentProject?: ProjectModelPreset;
   isDrawerOpen?: boolean;
   controlsRef: React.RefObject<OrbitControlsImpl | null>;
+  compactPreview?: boolean;
 }) {
   const { camera } = useThree();
 
   useEffect(() => {
     // When drawer is open, adjust center target so building is centered in visible 3D canvas
-    const targetX = isDrawerOpen ? -1.1 : 0.2;
+    const targetX = compactPreview ? 0.0 : isDrawerOpen ? -1.1 : 0.2;
     const floor = currentProject?.floors?.find((f) => f.id === selectedLevel || f.name === selectedLevel || f.shortName === selectedLevel);
     const targetY = floor ? Math.max(1.0, floor.elevation + 1.2) : 6.0;
 
@@ -1215,6 +1237,25 @@ function CameraController({
         controlsRef.current.target.set(targetX, targetY, 0);
         controlsRef.current.update();
       }
+    } else if (viewMode === "section") {
+      // Architectural section mode: position camera directly facing the sliced floor cross-section
+      const sectionY = targetY + 1.2;
+      camera.position.set(targetX, sectionY + 2.0, 26);
+      camera.lookAt(targetX, sectionY, 0);
+      if (controlsRef.current) {
+        controlsRef.current.target.set(targetX, sectionY, 0);
+        controlsRef.current.update();
+      }
+    } else if (compactPreview) {
+      // In compact preview (225px card):
+      // Clean framing showing the whole building with elevation focus on selected floor
+      const previewDist = 24.5;
+      camera.position.set(previewDist, 16.0 + (targetY - 6.0) * 0.35, previewDist);
+      camera.lookAt(targetX, targetY, 0);
+      if (controlsRef.current) {
+        controlsRef.current.target.set(targetX, targetY, 0);
+        controlsRef.current.update();
+      }
     } else {
       // Default isometric 3D view: smooth focus on the active level
       camera.position.set(25.0 + targetX, 17.0 + (targetY - 6.0) * 0.5, 25.0);
@@ -1224,44 +1265,88 @@ function CameraController({
         controlsRef.current.update();
       }
     }
-  }, [viewMode, selectedLevel, currentProject, isDrawerOpen, camera, controlsRef]);
+  }, [viewMode, selectedLevel, currentProject, isDrawerOpen, camera, controlsRef, compactPreview]);
 
   return null;
+}
+
+// ─── 13b. Imported 3D Model Viewer ─────────────────────────────────────────────
+function ImportedModelViewer({
+  model,
+  wireframe = false,
+}: {
+  model: ImportedModelData;
+  wireframe?: boolean;
+}) {
+  const clonedScene = useMemo(() => {
+    if (!model.scene) return null;
+    const clone = model.scene.clone(true);
+    if (wireframe) {
+      clone.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mesh = child as THREE.Mesh;
+          if (Array.isArray(mesh.material)) {
+            mesh.material = mesh.material.map((m) => {
+              const wm = m.clone();
+              (wm as any).wireframe = true;
+              return wm;
+            });
+          } else if (mesh.material) {
+            const wm = mesh.material.clone();
+            (wm as any).wireframe = true;
+            mesh.material = wm;
+          }
+        }
+      });
+    }
+    return clone;
+  }, [model, wireframe]);
+
+  if (!clonedScene) return null;
+  return <primitive object={clonedScene} />;
 }
 
 // ─── 14. Main Scene Graph ─────────────────────────────────────────────────────
 function Scene({
   currentProject = PROJECT_PRESETS[0],
+  importedModel = null,
   selectedLevel,
   selectedLevels = [],
   selectedZone = "all",
   selectedDiscipline = "all",
   visMode = "status",
   selectedElementId,
-  elementFilter,
-  viewMode,
-  dragMode,
-  sectionMode,
-  isDrawerOpen,
+  elementFilter = "all",
+  viewMode = "3d",
+  dragMode = "orbit",
+  sectionMode = false,
+  isDrawerOpen = false,
   controlsRef,
   onElementClick,
   onElementDoubleClick,
+  compactPreview = false,
+  wireframe = false,
+  enableZoom,
 }: {
   currentProject?: ProjectModelPreset;
+  importedModel?: ImportedModelData | null;
   selectedLevel: string;
   selectedLevels?: string[];
   selectedZone?: string;
   selectedDiscipline?: DisciplineType;
   visMode?: VisualizationMode;
   selectedElementId: string | null;
-  elementFilter: ElementFilter;
-  viewMode: string;
-  dragMode: "pan" | "orbit";
-  sectionMode: boolean;
+  elementFilter?: ElementFilter;
+  viewMode?: string;
+  dragMode?: "pan" | "orbit";
+  sectionMode?: boolean;
   isDrawerOpen?: boolean;
   controlsRef: React.RefObject<OrbitControlsImpl | null>;
   onElementClick: (el: ModelElement) => void;
   onElementDoubleClick?: (el: ModelElement) => void;
+  compactPreview?: boolean;
+  wireframe?: boolean;
+  enableZoom?: boolean;
 }) {
   const floors = useMemo(() => {
     if (currentProject && currentProject.floors && currentProject.floors.length > 0) {
@@ -1312,16 +1397,18 @@ function Scene({
         currentProject={currentProject}
         isDrawerOpen={isDrawerOpen}
         controlsRef={controlsRef}
+        compactPreview={compactPreview}
       />
 
       <OrbitControls
         ref={controlsRef}
         enableDamping
         dampingFactor={0.06}
-        minDistance={11}
-        maxDistance={65}
+        minDistance={compactPreview ? 14 : 11}
+        maxDistance={compactPreview ? 55 : 65}
         maxPolarAngle={viewMode === "top" ? 0.01 : Math.PI / 2.05}
-        enablePan
+        enablePan={!compactPreview}
+        enableZoom={enableZoom ?? !compactPreview}
         panSpeed={0.8}
         rotateSpeed={0.65}
         zoomSpeed={1.05}
@@ -1334,44 +1421,53 @@ function Scene({
       />
 
       {/* Neutral Site Ground, Coordinate Grid & Site Boundary */}
-      <SiteSurroundings hasCrane={currentProject?.hasCrane !== false} />
+      <SiteSurroundings hasCrane={compactPreview ? false : (currentProject?.hasCrane !== false)} />
 
       {/* Section Plane Cut Overlay */}
       <SectionCutPlane activeLevelIndex={activeLevelIndex} visible={sectionMode} />
 
-      {/* Dynamic Building Floors */}
-      {floors.map((floor, idx) => {
-        if (floor.isRoof) return null;
-        const elements = getElementsForLevel(floor.id);
+      {/* 3D Geometry: Either Imported Model or Procedural Building Floors */}
+      {importedModel ? (
+        <ImportedModelViewer model={importedModel} wireframe={wireframe} />
+      ) : (
+        <>
+          {/* Dynamic Building Floors */}
+          {floors.map((floor, idx) => {
+            if (floor.isRoof) return null;
+            const elements = getElementsForLevel(floor.id);
 
-        return (
-          <FloorAssembly
-            key={floor.id}
-            floor={floor}
-            floorIndex={idx}
-            elements={elements}
-            selectedElementId={selectedElementId}
-            selectedLevel={selectedLevel}
-            selectedLevels={selectedLevels}
-            selectedZone={selectedZone}
-            selectedDiscipline={selectedDiscipline}
-            visMode={visMode}
-            elementFilter={elementFilter}
-            sectionMode={sectionMode}
-            activeLevelIndex={activeLevelIndex}
-            onElementClick={onElementClick}
-            onElementDoubleClick={onElementDoubleClick}
+            return (
+              <FloorAssembly
+                key={floor.id}
+                floor={floor}
+                floorIndex={idx}
+                elements={elements}
+                selectedElementId={selectedElementId}
+                selectedLevel={selectedLevel}
+                selectedLevels={selectedLevels}
+                selectedZone={selectedZone}
+                selectedDiscipline={selectedDiscipline}
+                visMode={visMode}
+                elementFilter={elementFilter}
+                sectionMode={sectionMode}
+                activeLevelIndex={activeLevelIndex}
+                onElementClick={onElementClick}
+                onElementDoubleClick={onElementDoubleClick}
+                wireframe={wireframe}
+              />
+            );
+          })}
+
+          {/* Dynamic Roof Deck */}
+          <RoofAssembly
+            elevation={roofElevation}
+            isSectioned={sectionMode && activeLevelIndex < floors.length - 2}
+            isLevelActive={selectedLevel === "Roof"}
+            isAnyLevelActive={selectedLevel !== null}
+            wireframe={wireframe}
           />
-        );
-      })}
-
-      {/* Dynamic Roof Deck */}
-      <RoofAssembly
-        elevation={roofElevation}
-        isSectioned={sectionMode && activeLevelIndex < floors.length - 2}
-        isLevelActive={selectedLevel === "Roof"}
-        isAnyLevelActive={selectedLevel !== null}
-      />
+        </>
+      )}
     </>
   );
 }
@@ -1379,6 +1475,8 @@ function Scene({
 // ─── 15. Exported BuildingCanvas Component ─────────────────────────────────────
 export interface BuildingCanvasProps {
   currentProject?: ProjectModelPreset;
+  importedModel?: ImportedModelData | null;
+  onResetToProjectModel?: () => void;
   selectedLevel: string;
   selectedLevels?: string[];
   selectedZone?: string;
@@ -1386,18 +1484,23 @@ export interface BuildingCanvasProps {
   visMode?: VisualizationMode;
   scrubDate?: number | string | null;
   selectedElementId: string | null;
-  elementFilter: ElementFilter;
-  viewMode: string;
+  elementFilter?: ElementFilter;
+  viewMode?: string;
   dragMode?: "pan" | "orbit";
   sectionMode?: boolean;
   showCallouts?: boolean;
   isDrawerOpen?: boolean;
-  onElementClick: (el: ModelElement) => void;
-  controlsRef: React.RefObject<OrbitControlsImpl | null>;
+  onElementClick?: (el: ModelElement) => void;
+  controlsRef?: React.RefObject<OrbitControlsImpl | null>;
+  compactPreview?: boolean;
+  wireframe?: boolean;
+  enableZoom?: boolean;
 }
 
 export function BuildingCanvas({
   currentProject = PROJECT_PRESETS[0],
+  importedModel = null,
+  onResetToProjectModel,
   selectedLevel,
   selectedLevels = [],
   selectedZone = "all",
@@ -1405,31 +1508,21 @@ export function BuildingCanvas({
   visMode = "status",
   scrubDate = null,
   selectedElementId,
-  elementFilter,
+  elementFilter = "all",
   viewMode = "3d",
   dragMode = "orbit",
   sectionMode = false,
   showCallouts = true,
   isDrawerOpen = false,
-  onElementClick,
+  onElementClick = () => {},
   controlsRef,
+  compactPreview = false,
+  wireframe = false,
+  enableZoom,
 }: BuildingCanvasProps) {
-  // Edge Case: Requirement 29 - Empty state when project has no 3D model
-  if (currentProject && !currentProject.modelAvailable) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full w-full bg-[#f8fafc] text-center p-8 select-none">
-        <div className="flex h-12 w-12 items-center justify-center rounded-sm bg-slate-100 border border-slate-200 text-slate-400 mb-3">
-          <svg className="h-6 w-6 stroke-[1.5]" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-          </svg>
-        </div>
-        <h3 className="text-[14px] font-semibold text-slate-800 mb-1">No 3D Model Available</h3>
-        <p className="text-[12px] text-slate-500 max-w-[360px] leading-relaxed mb-4">
-          This project package does not have an active 3D BIM model attached. Programme tasks, WBS, and milestones remain fully functional in Gantt, List, Network, and Calendar views.
-        </p>
-      </div>
-    );
-  }
+  const internalControlsRef = useRef<OrbitControlsImpl | null>(null);
+  const effectiveControlsRef = controlsRef || internalControlsRef;
+  const shouldShowCallouts = (compactPreview || importedModel) ? false : showCallouts;
 
   const colCardRef = useRef<HTMLDivElement | null>(null);
   const slabCardRef = useRef<HTMLDivElement | null>(null);
@@ -1459,19 +1552,56 @@ export function BuildingCanvas({
   // Double click handler to focus element in 3D
   const handleElementDoubleClick = useCallback(
     (el: ModelElement) => {
-      if (controlsRef.current) {
+      if (effectiveControlsRef.current) {
         const floor = currentProject?.floors?.find((f) => f.id === el.level);
         const targetY = floor ? floor.elevation + 1.6 : 6.0;
-        controlsRef.current.target.set(0.3, targetY, 0);
-        controlsRef.current.update();
+        effectiveControlsRef.current.target.set(0.3, targetY, 0);
+        effectiveControlsRef.current.update();
       }
       onElementClick(el);
     },
-    [controlsRef, onElementClick, currentProject]
+    [effectiveControlsRef, onElementClick, currentProject]
   );
 
+  // Edge Case: Requirement 29 - Empty state when project has no 3D model
+  if (currentProject && !currentProject.modelAvailable) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full w-full bg-[#f8fafc] text-center p-8 select-none">
+        <div className="flex h-12 w-12 items-center justify-center rounded-sm bg-slate-100 border border-slate-200 text-slate-400 mb-3">
+          <svg className="h-6 w-6 stroke-[1.5]" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+          </svg>
+        </div>
+        <h3 className="text-[14px] font-semibold text-slate-800 mb-1">No 3D Model Available</h3>
+        <p className="text-[12px] text-slate-500 max-w-[360px] leading-relaxed mb-4">
+          This project package does not have an active 3D BIM model attached. Programme tasks, WBS, and milestones remain fully functional in Gantt, List, Network, and Calendar views.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div className="relative h-full w-full overflow-hidden select-none bg-[#f8fafc]">
+    <div className={`relative h-full w-full overflow-hidden select-none bg-[#f8fafc] ${dragMode === "pan" ? "cursor-move" : "cursor-grab active:cursor-grabbing"}`}>
+      {/* Floating Badge for Custom Imported 3D Model */}
+      {importedModel && !compactPreview && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2.5 rounded-full border border-blue-200 bg-white/95 px-4 py-1.5 shadow-md backdrop-blur-xs text-xs select-none">
+          <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="font-semibold text-slate-800">Custom Model: {importedModel.fileName}</span>
+          <span className="text-slate-300">|</span>
+          <span className="text-slate-600 font-medium">{importedModel.meshCount} meshes</span>
+          <span className="text-slate-300">|</span>
+          <span className="text-slate-600 font-medium">{importedModel.vertexCount.toLocaleString()} vertices</span>
+          {onResetToProjectModel && (
+            <button
+              onClick={onResetToProjectModel}
+              className="ml-1 rounded-md bg-slate-100 hover:bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-700 transition-colors"
+            >
+              Reset to Ormiston Rise
+            </button>
+          )}
+        </div>
+      )}
+
       <Canvas
         shadows
         gl={{
@@ -1486,6 +1616,7 @@ export function BuildingCanvas({
         <Suspense fallback={null}>
           <Scene
             currentProject={currentProject}
+            importedModel={importedModel}
             selectedLevel={selectedLevel}
             selectedLevels={selectedLevels}
             selectedZone={selectedZone}
@@ -1497,219 +1628,229 @@ export function BuildingCanvas({
             dragMode={dragMode}
             sectionMode={sectionMode}
             isDrawerOpen={isDrawerOpen}
-            controlsRef={controlsRef}
+            controlsRef={effectiveControlsRef}
             onElementClick={onElementClick}
             onElementDoubleClick={handleElementDoubleClick}
+            compactPreview={compactPreview}
+            wireframe={wireframe}
+            enableZoom={enableZoom}
           />
-          <DynamicCalloutProjector
-            colCardRef={colCardRef}
-            slabCardRef={slabCardRef}
-            coreCardRef={coreCardRef}
-            colLineRef={colLineRef}
-            colOuterRingRef={colOuterRingRef}
-            colInnerDotRef={colInnerDotRef}
-            colGroupRef={colGroupRef}
-            slabLineRef={slabLineRef}
-            slabOuterRingRef={slabOuterRingRef}
-            slabInnerDotRef={slabInnerDotRef}
-            slabGroupRef={slabGroupRef}
-            coreLineRef={coreLineRef}
-            coreOuterRingRef={coreOuterRingRef}
-            coreInnerDotRef={coreInnerDotRef}
-            coreGroupRef={coreGroupRef}
-            showCallouts={showCallouts}
-            selectedElementId={selectedElementId}
-            hoveredCard={hoveredCard}
-            sectionMode={sectionMode}
-            selectedLevel={selectedLevel}
-          />
+          {shouldShowCallouts && (
+            <DynamicCalloutProjector
+              colCardRef={colCardRef}
+              slabCardRef={slabCardRef}
+              coreCardRef={coreCardRef}
+              colLineRef={colLineRef}
+              colOuterRingRef={colOuterRingRef}
+              colInnerDotRef={colInnerDotRef}
+              colGroupRef={colGroupRef}
+              slabLineRef={slabLineRef}
+              slabOuterRingRef={slabOuterRingRef}
+              slabInnerDotRef={slabInnerDotRef}
+              slabGroupRef={slabGroupRef}
+              coreLineRef={coreLineRef}
+              coreOuterRingRef={coreOuterRingRef}
+              coreInnerDotRef={coreInnerDotRef}
+              coreGroupRef={coreGroupRef}
+              showCallouts={shouldShowCallouts}
+              selectedElementId={selectedElementId}
+              hoveredCard={hoveredCard}
+              sectionMode={sectionMode}
+              selectedLevel={selectedLevel}
+            />
+          )}
         </Suspense>
       </Canvas>
 
       {/* SVG Screen-Space Layer for Minimal Leader Lines & Anchor Rings */}
-      <svg className="absolute inset-0 pointer-events-none w-full h-full z-20">
-        {/* Callout 1 (Columns) */}
-        <g ref={colGroupRef} style={{ display: "none" }}>
-          <line ref={colLineRef} x1={0} y1={0} x2={0} y2={0} stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="3 2" />
-          <circle ref={colOuterRingRef} cx={0} cy={0} r={5.5} fill="#ffffff" stroke="#2563eb" strokeWidth={2} />
-          <circle ref={colInnerDotRef} cx={0} cy={0} r={2} fill="#2563eb" />
-        </g>
-        {/* Callout 2 (Slab) */}
-        <g ref={slabGroupRef} style={{ display: "none" }}>
-          <line ref={slabLineRef} x1={0} y1={0} x2={0} y2={0} stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="3 2" />
-          <circle ref={slabOuterRingRef} cx={0} cy={0} r={5.5} fill="#ffffff" stroke="#10b981" strokeWidth={2} />
-          <circle ref={slabInnerDotRef} cx={0} cy={0} r={2} fill="#10b981" />
-        </g>
-        {/* Callout 3 (Core Wall) */}
-        <g ref={coreGroupRef} style={{ display: "none" }}>
-          <line ref={coreLineRef} x1={0} y1={0} x2={0} y2={0} stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="3 2" />
-          <circle ref={coreOuterRingRef} cx={0} cy={0} r={5.5} fill="#ffffff" stroke="#ef4444" strokeWidth={2} />
-          <circle ref={coreInnerDotRef} cx={0} cy={0} r={2} fill="#ef4444" />
-        </g>
-      </svg>
+      {shouldShowCallouts && (
+        <>
+          <svg className="absolute inset-0 pointer-events-none w-full h-full z-20">
+            {/* Callout 1 (Columns) */}
+            <g ref={colGroupRef} style={{ display: "none" }}>
+              <line ref={colLineRef} x1={0} y1={0} x2={0} y2={0} stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="3 2" />
+              <circle ref={colOuterRingRef} cx={0} cy={0} r={5.5} fill="#ffffff" stroke="#2563eb" strokeWidth={2} />
+              <circle ref={colInnerDotRef} cx={0} cy={0} r={2} fill="#2563eb" />
+            </g>
+            {/* Callout 2 (Slab) */}
+            <g ref={slabGroupRef} style={{ display: "none" }}>
+              <line ref={slabLineRef} x1={0} y1={0} x2={0} y2={0} stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="3 2" />
+              <circle ref={slabOuterRingRef} cx={0} cy={0} r={5.5} fill="#ffffff" stroke="#10b981" strokeWidth={2} />
+              <circle ref={slabInnerDotRef} cx={0} cy={0} r={2} fill="#10b981" />
+            </g>
+            {/* Callout 3 (Core Wall) */}
+            <g ref={coreGroupRef} style={{ display: "none" }}>
+              <line ref={coreLineRef} x1={0} y1={0} x2={0} y2={0} stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="3 2" />
+              <circle ref={coreOuterRingRef} cx={0} cy={0} r={5.5} fill="#ffffff" stroke="#ef4444" strokeWidth={2} />
+              <circle ref={coreInnerDotRef} cx={0} cy={0} r={2} fill="#ef4444" />
+            </g>
+          </svg>
 
-      {/* ─── Progressive Disclosure Callout 1: Level 2 — Columns ─── */}
-      <div
-        ref={colCardRef}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (colElLvl2) onElementClick(colElLvl2);
-        }}
-        onMouseEnter={() => setHoveredCard("columns")}
-        onMouseLeave={() => setHoveredCard(null)}
-        className={`absolute left-0 top-0 cursor-pointer select-none transition-all duration-150 pointer-events-auto ${
-          selectedElementId === "PRG-021"
-            ? "rounded-lg border border-blue-600 bg-white/98 p-2.5 shadow-md ring-2 ring-blue-500/20"
-            : hoveredCard === "columns"
-            ? "rounded-full border border-blue-500 bg-white px-2.5 py-1 shadow-xs"
-            : "rounded-full border border-slate-200/90 bg-white/95 px-2 py-0.5 shadow-xs hover:border-blue-400"
-        }`}
-        style={{ zIndex: selectedElementId === "PRG-021" ? 28 : 25, willChange: "transform" }}
-      >
-        {selectedElementId === "PRG-021" ? (
-          // Full Selected Card (Requirement 6)
-          <div className="min-w-[155px]">
-            <div className="flex items-center justify-between gap-1.5">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />
-                <span className="text-[12px] font-bold text-slate-900 leading-tight">Level 2 — Columns</span>
+          {/* ─── Progressive Disclosure Callout 1: Level 2 — Columns ─── */}
+          <div
+            ref={colCardRef}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (colElLvl2) onElementClick(colElLvl2);
+            }}
+            onMouseEnter={() => setHoveredCard("columns")}
+            onMouseLeave={() => setHoveredCard(null)}
+            className={`absolute left-0 top-0 cursor-pointer select-none transition-all duration-150 pointer-events-auto ${
+              selectedElementId === "PRG-021"
+                ? "rounded-lg border border-blue-600 bg-white/98 p-2.5 shadow-md ring-2 ring-blue-500/20"
+                : hoveredCard === "columns"
+                ? "rounded-full border border-blue-500 bg-white px-2.5 py-1 shadow-xs"
+                : "rounded-full border border-slate-200/90 bg-white/95 px-2 py-0.5 shadow-xs hover:border-blue-400"
+            }`}
+            style={{ zIndex: selectedElementId === "PRG-021" ? 28 : 25, willChange: "transform" }}
+          >
+            {selectedElementId === "PRG-021" ? (
+              // Full Selected Card (Requirement 6)
+              <div className="min-w-[155px]">
+                <div className="flex items-center justify-between gap-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />
+                    <span className="text-[12px] font-bold text-slate-900 leading-tight">Level 2 — Columns</span>
+                  </div>
+                  <span className="rounded bg-blue-50 px-1.5 py-0.2 text-[9.5px] font-bold text-blue-700 font-mono">
+                    60%
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center justify-between text-[10px] text-slate-500">
+                  <span className="font-medium text-blue-700">In Progress</span>
+                  <span>Structural</span>
+                </div>
+                <div className="mt-0.5 text-[9.5px] text-slate-400 font-mono">
+                  20 Dec 2025 → 16 Jan 2026
+                </div>
               </div>
-              <span className="rounded bg-blue-50 px-1.5 py-0.2 text-[9.5px] font-bold text-blue-700 font-mono">
-                60%
-              </span>
-            </div>
-            <div className="mt-1 flex items-center justify-between text-[10px] text-slate-500">
-              <span className="font-medium text-blue-700">In Progress</span>
-              <span>Structural</span>
-            </div>
-            <div className="mt-0.5 text-[9.5px] text-slate-400 font-mono">
-              20 Dec 2025 → 16 Jan 2026
-            </div>
+            ) : hoveredCard === "columns" ? (
+              // Hover State
+              <div className="flex items-center gap-1.5 text-[10.5px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0" />
+                <span className="font-semibold text-slate-800">Level 2 — Columns</span>
+                <span className="font-mono text-blue-600 font-bold text-[10px]">60%</span>
+              </div>
+            ) : (
+              // Normal Compact Marker (Requirement 7)
+              <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-700">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0" />
+                <span>L2 Columns</span>
+                <span className="font-mono text-[9px] text-blue-700 font-semibold">60%</span>
+              </div>
+            )}
           </div>
-        ) : hoveredCard === "columns" ? (
-          // Hover State
-          <div className="flex items-center gap-1.5 text-[10.5px]">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0" />
-            <span className="font-semibold text-slate-800">Level 2 — Columns</span>
-            <span className="font-mono text-blue-600 font-bold text-[10px]">60%</span>
-          </div>
-        ) : (
-          // Normal Compact Marker (Requirement 7)
-          <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-700">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0" />
-            <span>L2 Columns</span>
-            <span className="font-mono text-[9px] text-blue-700 font-semibold">60%</span>
-          </div>
-        )}
-      </div>
 
-      {/* ─── Progressive Disclosure Callout 2: Level 1 — Slab ─── */}
-      <div
-        ref={slabCardRef}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (slabElLvl1) onElementClick(slabElLvl1);
-        }}
-        onMouseEnter={() => setHoveredCard("slab")}
-        onMouseLeave={() => setHoveredCard(null)}
-        className={`absolute left-0 top-0 cursor-pointer select-none transition-all duration-150 pointer-events-auto ${
-          selectedElementId === "PRG-010"
-            ? "rounded-lg border border-emerald-600 bg-white/98 p-2.5 shadow-md ring-2 ring-emerald-500/20"
-            : hoveredCard === "slab"
-            ? "rounded-full border border-emerald-500 bg-white px-2.5 py-1 shadow-xs"
-            : "rounded-full border border-slate-200/90 bg-white/95 px-2 py-0.5 shadow-xs hover:border-emerald-400"
-        }`}
-        style={{ zIndex: selectedElementId === "PRG-010" ? 28 : 25, willChange: "transform" }}
-      >
-        {selectedElementId === "PRG-010" ? (
-          // Full Selected Card
-          <div className="min-w-[145px]">
-            <div className="flex items-center justify-between gap-1.5">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-600 shrink-0" />
-                <span className="text-[12px] font-bold text-slate-900 leading-tight">Level 1 — Slab</span>
+          {/* ─── Progressive Disclosure Callout 2: Level 1 — Slab ─── */}
+          <div
+            ref={slabCardRef}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (slabElLvl1) onElementClick(slabElLvl1);
+            }}
+            onMouseEnter={() => setHoveredCard("slab")}
+            onMouseLeave={() => setHoveredCard(null)}
+            className={`absolute left-0 top-0 cursor-pointer select-none transition-all duration-150 pointer-events-auto ${
+              selectedElementId === "PRG-010"
+                ? "rounded-lg border border-emerald-600 bg-white/98 p-2.5 shadow-md ring-2 ring-emerald-500/20"
+                : hoveredCard === "slab"
+                ? "rounded-full border border-emerald-500 bg-white px-2.5 py-1 shadow-xs"
+                : "rounded-full border border-slate-200/90 bg-white/95 px-2 py-0.5 shadow-xs hover:border-emerald-400"
+            }`}
+            style={{ zIndex: selectedElementId === "PRG-010" ? 28 : 25, willChange: "transform" }}
+          >
+            {selectedElementId === "PRG-010" ? (
+              // Full Selected Card
+              <div className="min-w-[145px]">
+                <div className="flex items-center justify-between gap-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-600 shrink-0" />
+                    <span className="text-[12px] font-bold text-slate-900 leading-tight">Level 1 — Slab</span>
+                  </div>
+                  <span className="rounded bg-emerald-50 px-1.5 py-0.2 text-[9.5px] font-bold text-emerald-700 font-mono">
+                    100%
+                  </span>
+                </div>
+                <div className="mt-1 text-[10px] text-emerald-700 font-medium">
+                  Completed Milestone
+                </div>
+                <div className="mt-0.5 text-[9.5px] text-slate-400 font-mono">
+                  03 Nov 2025 → 15 Nov 2025
+                </div>
               </div>
-              <span className="rounded bg-emerald-50 px-1.5 py-0.2 text-[9.5px] font-bold text-emerald-700 font-mono">
-                100%
-              </span>
-            </div>
-            <div className="mt-1 text-[10px] text-emerald-700 font-medium">
-              Completed Milestone
-            </div>
-            <div className="mt-0.5 text-[9.5px] text-slate-400 font-mono">
-              03 Nov 2025 → 15 Nov 2025
-            </div>
+            ) : hoveredCard === "slab" ? (
+              // Hover State
+              <div className="flex items-center gap-1.5 text-[10.5px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 shrink-0" />
+                <span className="font-semibold text-slate-800">Level 1 — Slab</span>
+                <span className="font-mono text-emerald-700 font-bold text-[10px]">100%</span>
+              </div>
+            ) : (
+              // Normal Compact Marker
+              <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-700">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 shrink-0" />
+                <span>L1 Slab</span>
+                <span className="font-mono text-[9px] text-emerald-700 font-semibold">100%</span>
+              </div>
+            )}
           </div>
-        ) : hoveredCard === "slab" ? (
-          // Hover State
-          <div className="flex items-center gap-1.5 text-[10.5px]">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 shrink-0" />
-            <span className="font-semibold text-slate-800">Level 1 — Slab</span>
-            <span className="font-mono text-emerald-700 font-bold text-[10px]">100%</span>
-          </div>
-        ) : (
-          // Normal Compact Marker
-          <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-700">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 shrink-0" />
-            <span>L1 Slab</span>
-            <span className="font-mono text-[9px] text-emerald-700 font-semibold">100%</span>
-          </div>
-        )}
-      </div>
 
-      {/* ─── Progressive Disclosure Callout 3: Core Wall (Blocked) ─── */}
-      <div
-        ref={coreCardRef}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (coreElLvl2) onElementClick(coreElLvl2);
-        }}
-        onMouseEnter={() => setHoveredCard("core")}
-        onMouseLeave={() => setHoveredCard(null)}
-        className={`absolute left-0 top-0 cursor-pointer select-none transition-all duration-150 pointer-events-auto ${
-          selectedElementId === "PRG-022"
-            ? "rounded-lg border border-red-600 bg-white/98 p-2.5 shadow-md ring-2 ring-red-500/20"
-            : hoveredCard === "core"
-            ? "rounded-full border border-red-500 bg-white px-2.5 py-1 shadow-xs"
-            : "rounded-full border border-red-200 bg-white/95 px-2 py-0.5 shadow-xs hover:border-red-400"
-        }`}
-        style={{ zIndex: selectedElementId === "PRG-022" ? 28 : 25, willChange: "transform" }}
-      >
-        {selectedElementId === "PRG-022" ? (
-          // Full Selected Card
-          <div className="min-w-[150px]">
-            <div className="flex items-center justify-between gap-1.5">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-red-600 shrink-0" />
-                <span className="text-[12px] font-bold text-slate-900 leading-tight">Core Wall</span>
+          {/* ─── Progressive Disclosure Callout 3: Core Wall (Blocked) ─── */}
+          <div
+            ref={coreCardRef}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (coreElLvl2) onElementClick(coreElLvl2);
+            }}
+            onMouseEnter={() => setHoveredCard("core")}
+            onMouseLeave={() => setHoveredCard(null)}
+            className={`absolute left-0 top-0 cursor-pointer select-none transition-all duration-150 pointer-events-auto ${
+              selectedElementId === "PRG-022"
+                ? "rounded-lg border border-red-600 bg-white/98 p-2.5 shadow-md ring-2 ring-red-500/20"
+                : hoveredCard === "core"
+                ? "rounded-full border border-red-500 bg-white px-2.5 py-1 shadow-xs"
+                : "rounded-full border border-red-200 bg-white/95 px-2 py-0.5 shadow-xs hover:border-red-400"
+            }`}
+            style={{ zIndex: selectedElementId === "PRG-022" ? 28 : 25, willChange: "transform" }}
+          >
+            {selectedElementId === "PRG-022" ? (
+              // Full Selected Card
+              <div className="min-w-[150px]">
+                <div className="flex items-center justify-between gap-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-red-600 shrink-0" />
+                    <span className="text-[12px] font-bold text-slate-900 leading-tight">Core Wall</span>
+                  </div>
+                  <span className="rounded bg-red-50 px-1.5 py-0.2 text-[9.5px] font-bold text-red-600 uppercase">
+                    Blocked
+                  </span>
+                </div>
+                <div className="mt-1 text-[10px] font-medium text-red-600">
+                  Awaiting approval
+                </div>
+                <div className="mt-0.5 text-[9.5px] text-slate-400 font-mono">
+                  Structural Core · Jump Form
+                </div>
               </div>
-              <span className="rounded bg-red-50 px-1.5 py-0.2 text-[9.5px] font-bold text-red-600 uppercase">
-                Blocked
-              </span>
-            </div>
-            <div className="mt-1 text-[10px] font-medium text-red-600">
-              Awaiting approval
-            </div>
-            <div className="mt-0.5 text-[9.5px] text-slate-400 font-mono">
-              Structural Core · Jump Form
-            </div>
+            ) : hoveredCard === "core" ? (
+              // Hover State
+              <div className="flex items-center gap-1.5 text-[10.5px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-600 shrink-0" />
+                <span className="font-semibold text-slate-800">Core Wall</span>
+                <span className="text-[9.5px] font-bold text-red-600 uppercase">Blocked</span>
+              </div>
+            ) : (
+              // Normal Compact Marker
+              <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-700">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-600 shrink-0" />
+                <span>Core Wall</span>
+                <span className="text-[9px] font-bold text-red-600">Blocked</span>
+              </div>
+            )}
           </div>
-        ) : hoveredCard === "core" ? (
-          // Hover State
-          <div className="flex items-center gap-1.5 text-[10.5px]">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-600 shrink-0" />
-            <span className="font-semibold text-slate-800">Core Wall</span>
-            <span className="text-[9.5px] font-bold text-red-600 uppercase">Blocked</span>
-          </div>
-        ) : (
-          // Normal Compact Marker
-          <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-700">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-600 shrink-0" />
-            <span>Core Wall</span>
-            <span className="text-[9px] font-bold text-red-600">Blocked</span>
-          </div>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }
+

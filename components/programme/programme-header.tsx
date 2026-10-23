@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   Plus,
   GitBranch,
+  Clock,
 } from "lucide-react";
 import { useProgramme } from "@/lib/programme-context";
 import { BimDigitalTwinHero } from "./bim/bim-digital-twin-hero";
@@ -38,9 +39,20 @@ export function ProgrammeHeader() {
     openImport,
     openExport,
     openRevisions,
+    projectCalendar,
+    openCalendarModal,
+    showBaselineComparison,
+    setShowBaselineComparison,
+    selectedBaselineVersion,
+    setSelectedBaselineVersion,
   } = useProgramme();
-  const [selectedForecast, setSelectedForecast] = useState("Working Forecast");
   const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  const selectedForecast = showBaselineComparison
+    ? selectedBaselineVersion === "ver-ab"
+      ? "Approved Baseline 1.1"
+      : "Baseline 0 (Contract)"
+    : "Working Forecast";
 
   const isNetwork = state.activeView === "network";
   const isGantt = state.activeView === "gantt";
@@ -70,6 +82,7 @@ export function ProgrammeHeader() {
                 <span>Add Task</span>
               </button>
               <button
+                id="header-import-btn"
                 onClick={openImport}
                 className="inline-flex h-9 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors"
               >
@@ -77,6 +90,7 @@ export function ProgrammeHeader() {
                 <span>Import</span>
               </button>
               <button
+                id="header-export-btn"
                 onClick={openExport}
                 className="inline-flex h-9 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors"
               >
@@ -102,6 +116,16 @@ export function ProgrammeHeader() {
               <CalendarIcon className="h-3.5 w-3.5 text-slate-400" />
               <span>01 Sep 2025 – 15 Nov 2026</span>
             </span>
+            <span className="text-slate-300">·</span>
+            <button
+              id="header-project-calendar-btn"
+              onClick={openCalendarModal}
+              className="inline-flex items-center gap-1.5 rounded bg-slate-100 hover:bg-blue-50 hover:text-blue-700 px-2 py-0.5 text-[11.5px] font-medium text-slate-700 transition-colors border border-slate-200/60 cursor-pointer"
+              title="Click to configure Project Working Calendar, shift hours, and project holidays"
+            >
+              <Clock className="h-3 w-3 text-blue-600" />
+              <span>{projectCalendar.name}</span>
+            </button>
           </div>
 
           {/* Next Milestone Dedicated Attention Banner */}
@@ -269,7 +293,15 @@ export function ProgrammeHeader() {
                 <button
                   key={opt.id}
                   onClick={() => {
-                    setSelectedForecast(opt.label);
+                    if (opt.id === "wf") {
+                      setShowBaselineComparison(false);
+                    } else if (opt.id === "b0") {
+                      setSelectedBaselineVersion("ver-b0");
+                      setShowBaselineComparison(true);
+                    } else if (opt.id === "ab1") {
+                      setSelectedBaselineVersion("ver-ab");
+                      setShowBaselineComparison(true);
+                    }
                     setDropdownOpen(false);
                   }}
                   className="flex w-full items-center justify-between rounded-xs px-2.5 py-1.5 text-[12.5px] text-slate-700 hover:bg-slate-50 text-left"
@@ -277,7 +309,11 @@ export function ProgrammeHeader() {
                   <div className="flex items-center gap-2">
                     <span
                       className={`h-2 w-2 rounded-xs ${
-                        opt.isCurrent ? "bg-emerald-500" : "bg-slate-300"
+                        opt.id === "wf"
+                          ? !showBaselineComparison ? "bg-emerald-500" : "bg-slate-300"
+                          : showBaselineComparison && ((opt.id === "b0" && selectedBaselineVersion === "ver-b0") || (opt.id === "ab1" && selectedBaselineVersion === "ver-ab"))
+                          ? "bg-blue-600"
+                          : "bg-slate-300"
                       }`}
                     />
                     <span>{opt.label}</span>
@@ -315,6 +351,7 @@ export function ProgrammeHeader() {
 
         {/* Import Button */}
         <button
+          id="header-import-btn-secondary"
           onClick={openImport}
           className="inline-flex items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-[12.5px] font-medium text-slate-700 hover:bg-slate-50 transition-colors"
         >
@@ -324,6 +361,7 @@ export function ProgrammeHeader() {
 
         {/* Export Button */}
         <button
+          id="header-export-btn-secondary"
           onClick={openExport}
           className="inline-flex items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-[12.5px] font-medium text-slate-700 hover:bg-slate-50 transition-colors"
         >
@@ -331,13 +369,15 @@ export function ProgrammeHeader() {
           <span>Export</span>
         </button>
 
-        {/* Revisions Button */}
+        {/* Revisions & Baseline Integrity Button */}
         <button
+          id="header-revisions-btn"
           onClick={openRevisions}
-          title="Programme Revisions & History"
-          className="flex h-7.5 w-7.5 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors"
+          title="Programme Revisions & Baseline Integrity"
+          className="inline-flex items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-[12.5px] font-medium text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
         >
-          <MoreHorizontal className="h-4 w-4" />
+          <GitBranch className="h-3.5 w-3.5 text-blue-600" />
+          <span>Revisions</span>
         </button>
       </div>
     </div>

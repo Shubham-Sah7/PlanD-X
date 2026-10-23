@@ -1075,3 +1075,45 @@ export function formatDate(iso: string): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
+
+// ─── Bidirectional 3D Element to Schedule Task ID Mappings ───────────────────
+export const ELEMENT_TO_TASK_MAP: Record<string, string> = {
+  "PRG-021": "task-columns",       // Level 2 - Columns (60% In Progress)
+  "PRG-010": "task-level-1-slab",  // Level 1 - Slab (100% Complete)
+  "PRG-022": "task-blocked-3",     // Level 2 - Core Wall (Blocked)
+  "PRG-001": "task-earthworks",    // Ground Slab
+  "PRG-002": "task-superstructure",// Ground Columns
+  "PRG-011": "task-level-1",       // Level 1 Columns
+  "PRG-020": "task-slab",          // Level 2 Slab
+  "PRG-025": "task-columns",       // Level 2 Beams
+  "PRG-026": "task-blockwork",     // Level 2 Walls
+  "PRG-023": "task-facade",        // Level 2 Facade
+  "PRG-030": "task-level-3",       // Level 3 Slab
+  "PRG-040": "task-level-4",       // Level 4 Slab
+  "PRG-050": "task-level-4",       // Roof Slab
+};
+
+export const TASK_TO_ELEMENT_MAP: Record<string, string> = {
+  "task-columns": "PRG-021",
+  "task-level-1-slab": "PRG-010",
+  "task-blocked-3": "PRG-022",
+  "task-earthworks": "PRG-001",
+  "task-superstructure": "PRG-002",
+  "task-level-1": "PRG-011",
+  "task-slab": "PRG-020",
+  "task-blockwork": "PRG-026",
+  "task-facade": "PRG-023",
+  "task-level-3": "PRG-030",
+  "task-level-4": "PRG-040",
+  "task-level-2": "PRG-021",
+};
+
+export const LEVEL_TO_TASK_MAP: Record<string, string> = {
+  Roof: "task-level-4",
+  "Level 4": "task-level-4",
+  "Level 3": "task-level-3",
+  "Level 2": "task-columns",
+  "Level 1": "task-level-1-slab",
+  Ground: "task-earthworks",
+};
+

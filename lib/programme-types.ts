@@ -27,24 +27,50 @@ export type ProgrammeState =
 
 export type ZoomLevel = "day" | "week" | "month" | "quarter";
 
-export type ViewMode = "3d" | "gantt" | "network" | "list" | "calendar";
+export type ViewMode = "3d" | "gantt" | "lookahead" | "network" | "list" | "calendar" | "reports";
+
+export type ReportPeriod = "lifecycle" | "month" | "2-weeks" | "4-weeks";
 
 export type FocusPreset =
   | "all"
   | "today"
   | "this-week"
   | "next-2-weeks"
+  | "next-4-weeks"
   | "critical-path"
   | "my-work"
   | "blocked";
 
+export type LookaheadPeriod = "1-week" | "2-weeks" | "4-weeks" | "6-weeks";
+
+export type LookaheadReadiness =
+  | "ready"
+  | "dependency-risk"
+  | "blocked"
+  | "overdue"
+  | "unassigned";
+
+export interface LookaheadTaskItem {
+  task: ProgrammeTask;
+  readiness: LookaheadReadiness;
+  readinessReason?: string;
+  timingInWindow: "starts-in-window" | "finishes-in-window" | "spans-window" | "within-window";
+  daysUntilStart: number;
+  daysUntilFinish: number;
+  unresolvedPredecessors: { id: string; name: string; status: TaskStatus; progress: number; endDate: string }[];
+}
+
 // ─── Core Data Models ───────────────────────────────────────
+
+export type DependencyType = "FS" | "SS" | "FF" | "SF";
 
 export interface DependencyDetail {
   id: string;
   name: string;
   relation: string; // e.g., "Finishes before this starts (FS)" or "Starts after this finishes (FS)"
-  statusColor: string; // e.g., "emerald" or "gray"
+  statusColor?: string; // e.g., "emerald" or "gray"
+  type?: DependencyType; // "FS" | "SS" | "FF" | "SF" (default: "FS")
+  lag?: number; // working days (positive = lag / delay, negative = lead / overlap, default: 0)
 }
 
 export interface ProgrammeTask {
@@ -64,6 +90,7 @@ export interface ProgrammeTask {
   costCode?: string; // e.g., "STR-CL-02"
   assignee: string | null;
   assigneeInitials?: string;
+  subcontractor?: string | null;
   description?: string;
   isCritical: boolean;
   isMilestone: boolean;
@@ -76,6 +103,9 @@ export interface ProgrammeTask {
   depth: number; // nesting depth (0 = programme, 1 = phase, etc.)
   isExpanded?: boolean;
   float: number; // total float in days
+  freeFloat?: number; // free float in days
+  lateStart?: string; // Late Start ISO date
+  lateFinish?: string; // Late Finish ISO date
   taskCount?: number; // e.g. 120 tasks for Superstructure
   isOverdue?: boolean;
   isBlocked?: boolean;
@@ -86,6 +116,11 @@ export interface ProgrammeTask {
   blockedBy?: string; // explanation of blocker
   colIndex?: number;
   rowIndex?: number;
+  baseline0Start?: string;
+  baseline0Finish?: string;
+  workingForecastStart?: string;
+  workingForecastFinish?: string;
+  manualStartDate?: string;
 }
 
 export interface ProgrammeVersion {

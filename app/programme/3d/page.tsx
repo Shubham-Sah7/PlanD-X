@@ -46,6 +46,9 @@ import {
   MODEL_ELEMENTS,
   PROJECT_PRESETS,
   SAVED_PROGRAMME_VIEWS,
+  ELEMENT_TO_TASK_MAP,
+  TASK_TO_ELEMENT_MAP,
+  LEVEL_TO_TASK_MAP,
   type ModelElement,
   type BuildingLevel,
   type ElementFilter,
@@ -58,6 +61,7 @@ import { ModelTimeline } from "@/components/programme/model3d/model-timeline";
 import { UploadModelModal } from "@/components/programme/model3d/upload-modal";
 import { TaskDrawer } from "@/components/programme/task-drawer";
 import { AppSidebar } from "@/components/programme/app-sidebar";
+import { BaselineRevisionsModal } from "@/components/programme/baseline/baseline-revisions-modal";
 
 // Dynamically import the Three.js 3D canvas (SSR disabled)
 const BuildingCanvas = dynamic(
@@ -101,10 +105,20 @@ const COMPACT_ELEMENT_FILTERS: { id: ElementFilter; label: string }[] = [
 
 export default function Model3DPage() {
   const router = useRouter();
-  const { state, setActiveView, selectTask, openDrawer } = useProgramme();
+  const {
+    state,
+    setActiveView,
+    selectTask,
+    openDrawer,
+    importedModel,
+    setImportedModel,
+    activeProjectPreset,
+    setActiveProjectPreset,
+  } = useProgramme();
 
   // Dynamic Project selection
-  const [currentProject, setCurrentProject] = useState<ProjectModelPreset>(PROJECT_PRESETS[0]);
+  const currentProject = activeProjectPreset || PROJECT_PRESETS[0];
+  const setCurrentProject = setActiveProjectPreset;
   const [showProjectDropdown, setShowProjectDropdown] = useState(false);
 
   // Level selections
@@ -135,8 +149,8 @@ export default function Model3DPage() {
   );
   const [selectedElement, setSelectedElement] = useState<ModelElement | null>(defaultColElement);
 
-  // View modes
-  const [viewMode, setViewMode] = useState<"3d" | "2d" | "top">("3d");
+  // View modes: 3D Perspective, 2D Front Elevation, Top-down Plan, and Section Cut
+  const [viewMode, setViewMode] = useState<"3d" | "2d" | "top" | "section">("3d");
   const [dragMode, setDragMode] = useState<"pan" | "orbit">("orbit");
   const [sectionMode, setSectionMode] = useState(false);
   const [elementFilter, setElementFilter] = useState<ElementFilter>("all");
@@ -170,134 +184,16 @@ export default function Model3DPage() {
     setSelectedDiscipline("all");
   };
 
-  // Comprehensive Element ID to Real Programme Task ID mapping
-  const elementToTaskIdMap: Record<string, string> = useMemo(
-    () => ({
-      "PRG-021": "task-columns",       // Level 2 - Columns (60% In Progress)
-      "PRG-010": "task-level-1-slab",  // Level 1 - Slab (100% Complete)
-      "PRG-022": "task-blocked-3",     // Level 2 - Core Wall (Blocked)
-      "PRG-001": "task-earthworks",    // Ground Slab
-      "PRG-002": "task-superstructure",// Ground Columns
-      "PRG-011": "task-level-1",       // Level 1 Columns
-      "PRG-020": "task-slab",          // Level 2 Slab
-      "PRG-025": "task-columns",       // Level 2 Beams
-      "PRG-026": "task-blockwork",     // Level 2 Walls
-      "PRG-023": "task-facade",        // Level 2 Facade
-      "PRG-030": "task-level-3",       // Level 3 Slab
-      "PRG-040": "task-level-4",       // Level 4 Slab
-      "PRG-050": "task-level-4",       // Roof Slab
-    }),
-    []
-  );
+  // Shared Element ID to Real Programme Task ID mapping
+  const elementToTaskIdMap = ELEMENT_TO_TASK_MAP;
 
-  // ESC to clear selection
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setSelectedElement(null);
-        setShowSearchResults(false);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+  // View mode setter with section plane synchronization
+  const handleSetViewMode = useCallback((mode: "3d" | "2d" | "top" | "section") => {
+    setViewMode(mode);
+    setSectionMode(mode === "section");
   }, []);
 
-  // Bidirectional sync: When a task is selected in timeline or drawer, highlight the 3D element
-  useEffect(() => {
-    if (!state.selectedTaskId) return;
-    const matchingEntry = Object.entries(elementToTaskIdMap).find(
-      ([, tId]) => tId === state.selectedTaskId
-    );
-    if (matchingEntry) {
-      const elId = matchingEntry[0];
-      if (selectedElement?.id !== elId) {
-        const found = MODEL_ELEMENTS.find((e) => e.id === elId);
-        if (found) {
-          setSelectedElement(found);
-          setSelectedLevel(found.level);
-          setSelectedLevels((prev) => (prev.includes(found.level) ? prev : [...prev, found.level]));
-        }
-      }
-    }
-  }, [state.selectedTaskId, elementToTaskIdMap, selectedElement?.id]);
-
-  // Handlers
-  const handleLevelSelect = useCallback(
-    (level: BuildingLevel) => {
-      setSelectedLevel(level);
-      setSelectedLevels([level]);
-      const targetType =
-        elementFilter === "all" || elementFilter === "structure" ? "columns" : elementFilter;
-      const match = MODEL_ELEMENTS.find((e) => e.level === level && e.elementType === targetType);
-      const chosen = match || MODEL_ELEMENTS.find((e) => e.level === level) || null;
-      if (chosen) {
-        setSelectedElement(chosen);
-        const taskId = elementToTaskIdMap[chosen.id] || "task-columns";
-        selectTask(taskId);
-        if (elementFilter !== "all") {
-          openDrawer(taskId);
-        }
-      }
-    },
-    [elementFilter, elementToTaskIdMap, selectTask, openDrawer]
-  );
-
-  const handleElementFilterSelect = useCallback(
-    (filter: ElementFilter) => {
-      setElementFilter(filter);
-      if (filter === "all") return;
-
-      const targetType = filter === "structure" ? "columns" : filter;
-      const levelMatch = MODEL_ELEMENTS.find(
-        (e) => e.level === selectedLevel && e.elementType === targetType
-      );
-      const chosen = levelMatch || MODEL_ELEMENTS.find((e) => e.elementType === targetType);
-      if (chosen) {
-        setSelectedElement(chosen);
-        setSelectedLevel(chosen.level);
-        if (!selectedLevels.includes(chosen.level)) {
-          setSelectedLevels((prev) => [...prev, chosen.level]);
-        }
-        const taskId = elementToTaskIdMap[chosen.id] || "task-columns";
-        selectTask(taskId);
-        openDrawer(taskId);
-      }
-    },
-    [selectedLevel, selectedLevels, elementToTaskIdMap, selectTask, openDrawer]
-  );
-
-  const toggleLevelMultiSelect = useCallback((level: string) => {
-    setSelectedLevels((prev) => {
-      if (prev.includes(level)) {
-        if (prev.length === 1) return prev; // Keep at least one
-        return prev.filter((l) => l !== level);
-      } else {
-        return [...prev, level];
-      }
-    });
-    setSelectedLevel(level);
-  }, []);
-
-  const handleSelectAllLevels = useCallback(() => {
-    if (currentProject.floors) {
-      setSelectedLevels(currentProject.floors.map((f) => f.id));
-    }
-  }, [currentProject]);
-
-  const handleElementClick = useCallback(
-    (el: ModelElement) => {
-      setSelectedElement(el);
-      setSelectedLevel(el.level);
-      if (!selectedLevels.includes(el.level)) {
-        setSelectedLevels((prev) => [...prev, el.level]);
-      }
-      const taskId = elementToTaskIdMap[el.id] || "task-columns";
-      selectTask(taskId);
-      openDrawer(taskId);
-    },
-    [elementToTaskIdMap, selectTask, openDrawer, selectedLevels]
-  );
-
+  // Handlers for Camera Navigation
   const handleFit = useCallback(() => {
     if (controlsRef.current) {
       controlsRef.current.reset();
@@ -329,15 +225,31 @@ export default function Model3DPage() {
 
   const handleZoomIn = useCallback(() => {
     if (controlsRef.current) {
-      controlsRef.current.object.position.multiplyScalar(0.85);
-      controlsRef.current.update();
+      const controls = controlsRef.current;
+      const camera = controls.object;
+      const target = controls.target;
+      const offset = camera.position.clone().sub(target);
+      const minDistance = controls.minDistance || 10;
+      if (offset.length() > minDistance * 1.1) {
+        offset.multiplyScalar(0.82);
+        camera.position.copy(target).add(offset);
+        controls.update();
+      }
     }
   }, []);
 
   const handleZoomOut = useCallback(() => {
     if (controlsRef.current) {
-      controlsRef.current.object.position.multiplyScalar(1.18);
-      controlsRef.current.update();
+      const controls = controlsRef.current;
+      const camera = controls.object;
+      const target = controls.target;
+      const offset = camera.position.clone().sub(target);
+      const maxDistance = controls.maxDistance || 70;
+      if (offset.length() < maxDistance * 0.9) {
+        offset.multiplyScalar(1.22);
+        camera.position.copy(target).add(offset);
+        controls.update();
+      }
     }
   }, []);
 
@@ -352,6 +264,149 @@ export default function Model3DPage() {
     }
   }, [selectedLevel]);
 
+  // Keyboard Navigation Shortcuts (1/3=3D, 2=2D, T=Top, S=Section, O=Orbit, P=Pan, F=Fit, R=Reset, +/-=Zoom, Esc=Deselect)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const targetTag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (targetTag === "input" || targetTag === "textarea" || targetTag === "select") return;
+
+      if (e.key === "Escape") {
+        setSelectedElement(null);
+        setShowSearchResults(false);
+      } else if (e.key === "1" || e.key === "3") {
+        handleSetViewMode("3d");
+      } else if (e.key === "2") {
+        handleSetViewMode("2d");
+      } else if (e.key === "t" || e.key === "T") {
+        handleSetViewMode("top");
+      } else if (e.key === "s" || e.key === "S") {
+        handleSetViewMode(viewMode === "section" ? "3d" : "section");
+      } else if (e.key === "o" || e.key === "O") {
+        setDragMode("orbit");
+      } else if (e.key === "p" || e.key === "P") {
+        setDragMode("pan");
+      } else if (e.key === "f" || e.key === "F") {
+        handleFit();
+      } else if (e.key === "r" || e.key === "R") {
+        handleReset();
+      } else if (e.key === "+" || e.key === "=") {
+        handleZoomIn();
+      } else if (e.key === "-" || e.key === "_") {
+        handleZoomOut();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [handleFit, handleReset, handleZoomIn, handleZoomOut, handleSetViewMode, viewMode]);
+
+  // Bidirectional sync: When a task is selected in timeline or drawer, highlight the 3D element
+  useEffect(() => {
+    if (!state.selectedTaskId) return;
+    const matchingEntry = Object.entries(elementToTaskIdMap).find(
+      ([, tId]) => tId === state.selectedTaskId
+    );
+    if (matchingEntry) {
+      const elId = matchingEntry[0];
+      if (selectedElement?.id !== elId) {
+        const found = MODEL_ELEMENTS.find((e) => e.id === elId);
+        if (found) {
+          setSelectedElement(found);
+          setSelectedLevel(found.level);
+          setSelectedLevels((prev) => (prev.includes(found.level) ? prev : [...prev, found.level]));
+        }
+      }
+    }
+  }, [state.selectedTaskId, elementToTaskIdMap, selectedElement?.id]);
+
+  // Handlers for Level & Element Selection
+  const handleLevelSelect = useCallback(
+    (level: BuildingLevel) => {
+      setSelectedLevel(level);
+      setSelectedLevels([level]);
+      const targetType =
+        elementFilter === "all" || elementFilter === "structure" ? "columns" : elementFilter;
+      const match = MODEL_ELEMENTS.find((e) => e.level === level && e.elementType === targetType);
+      const chosen = match || MODEL_ELEMENTS.find((e) => e.level === level) || null;
+      if (chosen) {
+        setSelectedElement(chosen);
+        const taskId = elementToTaskIdMap[chosen.id];
+        if (taskId) {
+          selectTask(taskId);
+          if (elementFilter !== "all") {
+            openDrawer(taskId);
+          }
+        }
+      } else {
+        setSelectedElement(null);
+        const levelTaskId = LEVEL_TO_TASK_MAP[level];
+        if (levelTaskId) {
+          selectTask(levelTaskId);
+        }
+      }
+    },
+    [elementFilter, elementToTaskIdMap, selectTask, openDrawer]
+  );
+
+  const handleElementFilterSelect = useCallback(
+    (filter: ElementFilter) => {
+      setElementFilter(filter);
+      if (filter === "all") return;
+
+      const targetType = filter === "structure" ? "columns" : filter;
+      const levelMatch = MODEL_ELEMENTS.find(
+        (e) => e.level === selectedLevel && e.elementType === targetType
+      );
+      const chosen = levelMatch || MODEL_ELEMENTS.find((e) => e.elementType === targetType);
+      if (chosen) {
+        setSelectedElement(chosen);
+        setSelectedLevel(chosen.level);
+        if (!selectedLevels.includes(chosen.level)) {
+          setSelectedLevels((prev) => [...prev, chosen.level]);
+        }
+        const taskId = elementToTaskIdMap[chosen.id];
+        if (taskId) {
+          selectTask(taskId);
+          openDrawer(taskId);
+        }
+      }
+    },
+    [selectedLevel, selectedLevels, elementToTaskIdMap, selectTask, openDrawer]
+  );
+
+  const toggleLevelMultiSelect = useCallback((level: string) => {
+    setSelectedLevels((prev) => {
+      if (prev.includes(level)) {
+        if (prev.length === 1) return prev; // Keep at least one
+        return prev.filter((l) => l !== level);
+      } else {
+        return [...prev, level];
+      }
+    });
+    setSelectedLevel(level);
+  }, []);
+
+  const handleSelectAllLevels = useCallback(() => {
+    if (currentProject.floors) {
+      setSelectedLevels(currentProject.floors.map((f) => f.id));
+    }
+  }, [currentProject]);
+
+  const handleElementClick = useCallback(
+    (el: ModelElement) => {
+      setSelectedElement(el);
+      setSelectedLevel(el.level);
+      if (!selectedLevels.includes(el.level)) {
+        setSelectedLevels((prev) => [...prev, el.level]);
+      }
+      const taskId = elementToTaskIdMap[el.id];
+      if (taskId) {
+        selectTask(taskId);
+        openDrawer(taskId);
+      }
+    },
+    [elementToTaskIdMap, selectTask, openDrawer, selectedLevels]
+  );
+
   // Apply Saved Programme View
   const handleApplySavedView = (sv: SavedProgrammeView) => {
     setSelectedLevel(sv.level);
@@ -359,7 +414,10 @@ export default function Model3DPage() {
     setVisMode(sv.visMode);
     if (sv.zone) setSelectedZone(sv.zone);
     if (sv.discipline) setSelectedDiscipline(sv.discipline);
-    if (sv.sectionMode !== undefined) setSectionMode(sv.sectionMode);
+    if (sv.sectionMode !== undefined) {
+      setSectionMode(sv.sectionMode);
+      if (sv.sectionMode) setViewMode("section");
+    }
     setShowSavedViewsDropdown(false);
   };
 
@@ -383,35 +441,132 @@ export default function Model3DPage() {
     setShowSearchResults(false);
   };
 
-  // Predecessor and Successor for Dependency Navigation (Requirement 13)
-  const dependencyPredecessor = useMemo(() => {
+  // Real Mapped Task lookup from state.tasks (Requirement: Do not invent mappings)
+  const mappedTaskId = useMemo(() => {
     if (!selectedElement) return null;
-    if (selectedElement.predecessors && selectedElement.predecessors.length > 0) {
-      return MODEL_ELEMENTS.find((e) => e.id === selectedElement.predecessors[0]);
-    }
-    // Fallback: previous level slab
-    if (selectedElement.level === "Level 2") {
-      return MODEL_ELEMENTS.find((e) => e.id === "PRG-010"); // Level 1 Slab
-    }
-    return null;
-  }, [selectedElement]);
+    return elementToTaskIdMap[selectedElement.id] || null;
+  }, [selectedElement, elementToTaskIdMap]);
 
-  const dependencySuccessor = useMemo(() => {
-    if (!selectedElement) return null;
-    // Next activity in chain
-    if (selectedElement.id === "PRG-021") {
-      return MODEL_ELEMENTS.find((e) => e.id === "PRG-020"); // Level 2 Slab
+  const mappedTask = useMemo(() => {
+    if (!mappedTaskId) return null;
+    return state.tasks.find((t) => t.id === mappedTaskId) || null;
+  }, [mappedTaskId, state.tasks]);
+
+  // Predecessor and Successor tasks resolved from real schedule data
+  const predecessorTask = useMemo(() => {
+    if (!mappedTask || !mappedTask.predecessors?.length) return null;
+    const pId = mappedTask.predecessors[0];
+    return state.tasks.find((t) => t.id === pId) || null;
+  }, [mappedTask, state.tasks]);
+
+  const successorTask = useMemo(() => {
+    if (!mappedTask || !mappedTask.successors?.length) return null;
+    const sId = mappedTask.successors[0];
+    return state.tasks.find((t) => t.id === sId) || null;
+  }, [mappedTask, state.tasks]);
+
+  const handleNavigatePredecessor = useCallback(() => {
+    if (!predecessorTask) return;
+    const mappedElId = TASK_TO_ELEMENT_MAP[predecessorTask.id];
+    if (mappedElId) {
+      const el = MODEL_ELEMENTS.find((e) => e.id === mappedElId);
+      if (el) {
+        handleElementClick(el);
+        return;
+      }
     }
-    if (selectedElement.id === "PRG-020") {
-      return MODEL_ELEMENTS.find((e) => e.id === "PRG-030"); // Level 3 Slab
+    selectTask(predecessorTask.id);
+    openDrawer(predecessorTask.id);
+  }, [predecessorTask, handleElementClick, selectTask, openDrawer]);
+
+  const handleNavigateSuccessor = useCallback(() => {
+    if (!successorTask) return;
+    const mappedElId = TASK_TO_ELEMENT_MAP[successorTask.id];
+    if (mappedElId) {
+      const el = MODEL_ELEMENTS.find((e) => e.id === mappedElId);
+      if (el) {
+        handleElementClick(el);
+        return;
+      }
     }
-    return null;
-  }, [selectedElement]);
+    selectTask(successorTask.id);
+    openDrawer(successorTask.id);
+  }, [successorTask, handleElementClick, selectTask, openDrawer]);
 
   // Selected floor config from dynamic project
   const selectedFloorConfig = useMemo(() => {
     return currentProject.floors?.find((f) => f.id === selectedLevel) || currentProject.floors?.[0];
   }, [currentProject, selectedLevel]);
+
+  // Real Rollup for Selected Level from state.tasks
+  const selectedLevelRollup = useMemo(() => {
+    const lvlKey = selectedLevel.toLowerCase();
+    const levelTasks = state.tasks.filter((t) => {
+      const nameMatch = t.name.toLowerCase().includes(lvlKey);
+      const parentMatch = t.parentId ? t.parentId.toLowerCase().includes(lvlKey.replace(" ", "-")) : false;
+      const stageMatch = t.stage ? t.stage.toLowerCase().includes(lvlKey) : false;
+      const mapMatch = LEVEL_TO_TASK_MAP[selectedLevel] === t.id;
+      return nameMatch || parentMatch || stageMatch || mapMatch;
+    });
+
+    const total = levelTasks.length > 0 ? levelTasks.length : (selectedFloorConfig?.tasksCount ?? 0);
+    const completed = levelTasks.filter((t) => t.status === "complete").length;
+    const inProgress = levelTasks.filter((t) => t.status === "in-progress").length;
+    const blocked = levelTasks.filter((t) => t.status === "blocked").length;
+    const critical = levelTasks.filter((t) => t.isCritical).length;
+
+    const avgProgress = levelTasks.length > 0
+      ? Math.round(levelTasks.reduce((acc, t) => acc + (t.progress || 0), 0) / levelTasks.length)
+      : (selectedFloorConfig?.progress ?? 0);
+
+    const levelStatus: "complete" | "in-progress" | "blocked" | "not-started" =
+      avgProgress >= 100 ? "complete" :
+      blocked > 0 ? "blocked" :
+      avgProgress > 0 ? "in-progress" : "not-started";
+
+    const levelTaskId = LEVEL_TO_TASK_MAP[selectedLevel] || (levelTasks[0]?.id ?? null);
+
+    return {
+      name: selectedLevel,
+      totalTasks: total,
+      completedCount: completed,
+      inProgressCount: inProgress,
+      blockedCount: blocked,
+      criticalCount: critical > 0 ? critical : (selectedFloorConfig?.criticalCount ?? 0),
+      avgProgress,
+      status: levelStatus,
+      mappedTaskId: levelTaskId,
+    };
+  }, [selectedLevel, state.tasks, selectedFloorConfig]);
+
+  // Dynamic Level progress from state.tasks for sidebar list
+  const dynamicLevels = useMemo(() => {
+    return COMPACT_LEVELS.map((lv) => {
+      const lvlKey = lv.id.toLowerCase();
+      const levelTasks = state.tasks.filter((t) => {
+        const nameMatch = t.name.toLowerCase().includes(lvlKey);
+        const parentMatch = t.parentId ? t.parentId.toLowerCase().includes(lvlKey.replace(" ", "-")) : false;
+        const stageMatch = t.stage ? t.stage.toLowerCase().includes(lvlKey) : false;
+        const mapMatch = LEVEL_TO_TASK_MAP[lv.id] === t.id;
+        return nameMatch || parentMatch || stageMatch || mapMatch;
+      });
+
+      if (levelTasks.length === 0) return lv;
+
+      const avgProgress = Math.round(
+        levelTasks.reduce((acc, t) => acc + (t.progress || 0), 0) / levelTasks.length
+      );
+      const hasBlocked = levelTasks.some((t) => t.status === "blocked");
+      const status: "complete" | "in-progress" | "blocked" | "not-started" =
+        avgProgress >= 100 ? "complete" : hasBlocked ? "blocked" : avgProgress > 0 ? "in-progress" : "not-started";
+
+      return {
+        ...lv,
+        progress: avgProgress,
+        status,
+      };
+    });
+  }, [state.tasks]);
 
   return (
     <div className="relative flex h-screen w-screen overflow-hidden bg-[#f8fafc] text-slate-900 font-sans antialiased select-none">
@@ -447,9 +602,15 @@ export default function Model3DPage() {
 
             {/* Dynamic Project Selector Dropdown (Requirement 2 & 28) */}
             <div className="relative">
+              {showProjectDropdown && (
+                <div
+                  className="fixed inset-0 z-30"
+                  onClick={() => setShowProjectDropdown(false)}
+                />
+              )}
               <button
                 onClick={() => setShowProjectDropdown((v) => !v)}
-                className="flex items-center gap-2 hover:bg-slate-50 px-2 py-1 rounded-xs border border-transparent hover:border-slate-200 transition-colors"
+                className="flex items-center gap-2 hover:bg-slate-50 px-2 py-1 rounded-xs border border-transparent hover:border-slate-200 transition-colors relative z-40"
               >
                 <div className="flex h-5 w-5 items-center justify-center rounded-xs bg-blue-600 text-white font-mono font-bold text-[10px]">
                   P
@@ -498,7 +659,10 @@ export default function Model3DPage() {
             </div>
 
             <button
-              onClick={() => setShowUploadModal(true)}
+              onClick={() => {
+                setShowUploadModal(true);
+                setShowProjectDropdown(false);
+              }}
               className="flex items-center gap-1 border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-50 transition-colors rounded-xs"
             >
               <Upload className="h-3 w-3" />
@@ -769,7 +933,7 @@ export default function Model3DPage() {
             </div>
 
             <div className="flex flex-col py-1 border-b border-slate-100">
-              {COMPACT_LEVELS.map((lv) => {
+              {dynamicLevels.map((lv) => {
                 const isSelected = selectedLevel === lv.id;
                 return (
                   <button
@@ -835,29 +999,55 @@ export default function Model3DPage() {
             </div>
 
             {/* Selected Level Summary Card */}
-            {selectedFloorConfig && (
-              <div className="mt-auto border-t border-slate-200 p-2.5 bg-slate-50/70">
-                <div className="text-[9px] text-slate-400 uppercase tracking-wider mb-0.5">Floor Summary</div>
-                <div className="text-[11.5px] font-semibold text-slate-800 leading-tight">
-                  {selectedFloorConfig.name}
+            <div className="mt-auto border-t border-slate-200 p-2.5 bg-slate-50/80">
+              <div className="flex items-center justify-between text-[9px] text-slate-400 uppercase tracking-wider mb-0.5">
+                <span>Floor Summary</span>
+                <span className="font-mono text-slate-500 font-medium">Elev: {selectedFloorConfig?.elevation ?? 0}m</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="text-[12px] font-semibold text-slate-900 leading-tight">
+                  {selectedLevelRollup.name}
                 </div>
-                <div className="text-[10px] text-blue-600 font-mono font-medium mt-0.5">
-                  {selectedFloorConfig.progress}% Progress · {selectedFloorConfig.tasksCount} Tasks
-                </div>
-                {selectedFloorConfig.criticalCount > 0 && (
-                  <div className="mt-1 text-[9px] text-red-600 font-medium flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                    <span>{selectedFloorConfig.criticalCount} Critical on Path</span>
-                  </div>
+                <span className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded-xs font-mono ${
+                  selectedLevelRollup.status === "complete" ? "bg-emerald-50 text-emerald-700" :
+                  selectedLevelRollup.status === "in-progress" ? "bg-blue-50 text-blue-700" :
+                  selectedLevelRollup.status === "blocked" ? "bg-red-50 text-red-600" : "bg-slate-100 text-slate-600"
+                }`}>
+                  {selectedLevelRollup.avgProgress}%
+                </span>
+              </div>
+              <div className="text-[10px] text-slate-600 font-medium mt-1 flex items-center gap-1.5">
+                <span>{selectedLevelRollup.totalTasks} Programme Tasks</span>
+                {selectedLevelRollup.blockedCount > 0 && (
+                  <span className="text-red-600 font-semibold">· {selectedLevelRollup.blockedCount} Blocked</span>
                 )}
               </div>
-            )}
+              {selectedLevelRollup.criticalCount > 0 && (
+                <div className="mt-1 text-[9.5px] text-red-600 font-medium flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                  <span>{selectedLevelRollup.criticalCount} Critical on Path</span>
+                </div>
+              )}
+              {selectedLevelRollup.mappedTaskId && (
+                <button
+                  onClick={() => {
+                    selectTask(selectedLevelRollup.mappedTaskId!);
+                    openDrawer(selectedLevelRollup.mappedTaskId!);
+                  }}
+                  className="mt-2 w-full py-1 text-center text-[10px] font-semibold text-blue-600 hover:text-blue-700 bg-white border border-slate-200 rounded hover:border-blue-400 transition-colors"
+                >
+                  Open {selectedLevel} Activities →
+                </button>
+              )}
+            </div>
           </div>
 
           {/* 3D Canvas Area */}
           <div className="relative flex-1 h-full w-full overflow-hidden bg-[#f8fafc]">
             <BuildingCanvas
               currentProject={currentProject}
+              importedModel={importedModel}
+              onResetToProjectModel={() => setImportedModel(null)}
               selectedLevel={selectedLevel}
               selectedLevels={selectedLevels}
               selectedZone={selectedZone}
@@ -878,104 +1068,180 @@ export default function Model3DPage() {
             {/* ─── TOP-LEFT: Consolidated BIM Programme HUD ─── */}
             <div className="absolute top-3 left-3 z-20 pointer-events-none">
               {selectedElement ? (
-                <div className="flex flex-col border border-slate-200/90 bg-white/95 backdrop-blur-md px-3 py-2 rounded-sm shadow-sm max-w-[340px] pointer-events-auto">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className={`w-2 h-2 rounded-[2px] shrink-0 ${
-                        selectedElement.status === "complete" ? "bg-emerald-500" :
-                        selectedElement.status === "in-progress" ? "bg-blue-600" :
-                        selectedElement.status === "blocked" ? "bg-red-500" : "bg-slate-300"
-                      }`} />
-                      <span className="text-[12px] font-semibold text-slate-900 truncate">
-                        {selectedElement.name}
-                      </span>
-                      {selectedElement.isCritical && (
-                        <span className="text-[9px] font-semibold text-red-600 bg-red-50 border border-red-200/60 px-1 py-0.2 rounded-xs uppercase tracking-wider shrink-0">
-                          Critical
+                mappedTask ? (
+                  /* 1. Mapped Element: Display real schedule task details */
+                  <div className="flex flex-col border border-slate-200/90 bg-white/95 backdrop-blur-md px-3 py-2.5 rounded-md shadow-md max-w-[360px] pointer-events-auto">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className={`w-2 h-2 rounded-[2px] shrink-0 ${
+                          mappedTask.status === "complete" ? "bg-emerald-500" :
+                          mappedTask.status === "in-progress" ? "bg-blue-600" :
+                          mappedTask.status === "blocked" ? "bg-red-500" : "bg-slate-300"
+                        }`} />
+                        <span className="text-[12px] font-semibold text-slate-900 truncate">
+                          {mappedTask.name}
                         </span>
-                      )}
+                        <span className="font-mono text-[9px] text-slate-500 bg-slate-100 px-1 py-0.5 rounded-xs shrink-0">
+                          {mappedTask.wbs}
+                        </span>
+                        {mappedTask.isCritical && (
+                          <span className="text-[9px] font-semibold text-red-600 bg-red-50 border border-red-200/60 px-1 py-0.2 rounded-xs uppercase tracking-wider shrink-0">
+                            Critical
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => setSelectedElement(null)}
+                        className="text-slate-400 hover:text-slate-700 shrink-0 p-0.5 rounded-xs hover:bg-slate-100 transition-colors"
+                        title="Clear selection (Esc)"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
                     </div>
-                    <button
-                      onClick={() => setSelectedElement(null)}
-                      className="text-slate-400 hover:text-slate-700 shrink-0 p-0.5 rounded-xs hover:bg-slate-100 transition-colors"
-                      title="Clear selection (Esc)"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
 
-                  {/* Progress & Duration Context */}
-                  <div className="flex items-center justify-between gap-2 mt-1.5 text-[10.5px]">
-                    <div className="flex items-center gap-1.5 text-slate-600">
-                      <span className="font-mono font-medium text-blue-600">{selectedElement.progress ?? 0}% Complete</span>
-                      <span className="text-slate-300">·</span>
-                      <span className="text-slate-500">20 Dec 2025 → 16 Jan 2026</span>
-                    </div>
-                    {!state.drawerOpen && (
+                    {/* Progress, Status & Real Schedule Dates */}
+                    <div className="flex items-center justify-between gap-2 mt-1.5 text-[10.5px]">
+                      <div className="flex items-center gap-1.5 text-slate-600">
+                        <span className="font-mono font-medium text-blue-600">{mappedTask.progress}% Complete</span>
+                        <span className="text-slate-300">·</span>
+                        <span className="text-slate-600 font-mono text-[10px]">
+                          {mappedTask.displayStart || mappedTask.startDate} → {mappedTask.displayEnd || mappedTask.endDate}
+                        </span>
+                      </div>
                       <button
                         onClick={() => {
-                          const taskId = elementToTaskIdMap[selectedElement.id] || "task-columns";
-                          selectTask(taskId);
-                          openDrawer(taskId);
+                          selectTask(mappedTask.id);
+                          openDrawer(mappedTask.id);
                         }}
-                        className="text-[10px] font-medium text-blue-600 hover:underline shrink-0"
+                        className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-blue-600 hover:text-blue-700 hover:underline shrink-0"
+                        title="Open task in drawer to view full details"
                       >
-                        Inspect →
+                        <span>Inspect</span>
+                        <ArrowRight className="h-3 w-3" />
                       </button>
-                    )}
-                  </div>
+                    </div>
 
-                  {/* Connected Workflow Dependencies (Requirement 5) */}
-                  <div className="flex items-center gap-1.5 mt-2 pt-1.5 border-t border-slate-100 text-[10px]">
-                    <span className="text-slate-400 font-semibold uppercase text-[8.5px] tracking-wider shrink-0">Flow:</span>
-                    {dependencyPredecessor ? (
-                      <button
-                        onClick={() => handleElementClick(dependencyPredecessor)}
-                        className="text-slate-600 hover:text-blue-600 truncate max-w-[85px] font-medium"
-                        title={`Predecessor: ${dependencyPredecessor.name}`}
-                      >
-                        {dependencyPredecessor.name}
-                      </button>
-                    ) : (
-                      <span className="text-slate-400 italic">Start</span>
+                    {/* Trade & Subcontractor */}
+                    <div className="flex items-center justify-between text-[10px] text-slate-500 mt-1">
+                      <span>Trade: {mappedTask.trade || selectedElement.trade || "Structural"}</span>
+                      {mappedTask.subcontractor && (
+                        <span className="font-medium text-slate-700">{mappedTask.subcontractor}</span>
+                      )}
+                    </div>
+
+                    {/* Blocked Alert */}
+                    {mappedTask.status === "blocked" && (
+                      <div className="mt-1.5 rounded bg-red-50 border border-red-200 px-2 py-1 text-[10px] text-red-700 flex items-center gap-1.5">
+                        <ShieldAlert className="h-3.5 w-3.5 shrink-0 text-red-500" />
+                        <span className="truncate">{mappedTask.blockedBy || "Blocked awaiting inspection approval"}</span>
+                      </div>
                     )}
-                    <span className="text-slate-300">→</span>
-                    <span className="text-blue-700 font-semibold truncate max-w-[95px]">{selectedElement.name}</span>
-                    <span className="text-slate-300">→</span>
-                    {dependencySuccessor ? (
-                      <button
-                        onClick={() => handleElementClick(dependencySuccessor)}
-                        className="text-slate-600 hover:text-blue-600 truncate max-w-[85px] font-medium"
-                        title={`Successor: ${dependencySuccessor.name}`}
-                      >
-                        {dependencySuccessor.name}
-                      </button>
-                    ) : (
-                      <span className="text-slate-400 italic">End</span>
-                    )}
+
+                    {/* Connected Workflow Dependencies */}
+                    <div className="flex items-center gap-1.5 mt-2 pt-1.5 border-t border-slate-100 text-[10px]">
+                      <span className="text-slate-400 font-semibold uppercase text-[8.5px] tracking-wider shrink-0">Flow:</span>
+                      {predecessorTask ? (
+                        <button
+                          onClick={handleNavigatePredecessor}
+                          className="text-slate-600 hover:text-blue-600 truncate max-w-[85px] font-medium"
+                          title={`Predecessor: ${predecessorTask.name} (${predecessorTask.wbs})`}
+                        >
+                          {predecessorTask.name}
+                        </button>
+                      ) : (
+                        <span className="text-slate-400 italic">Start</span>
+                      )}
+                      <span className="text-slate-300">→</span>
+                      <span className="text-blue-700 font-semibold truncate max-w-[95px]">{mappedTask.name}</span>
+                      <span className="text-slate-300">→</span>
+                      {successorTask ? (
+                        <button
+                          onClick={handleNavigateSuccessor}
+                          className="text-slate-600 hover:text-blue-600 truncate max-w-[85px] font-medium"
+                          title={`Successor: ${successorTask.name} (${successorTask.wbs})`}
+                        >
+                          {successorTask.name}
+                        </button>
+                      ) : (
+                        <span className="text-slate-400 italic">End</span>
+                      )}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  /* 2. Unmapped Element: Explicitly inform user that mapping is required (Constraint: Do not invent mappings) */
+                  <div className="flex flex-col border border-amber-200 bg-amber-50/95 backdrop-blur-md px-3 py-2.5 rounded-md shadow-sm max-w-[340px] pointer-events-auto text-amber-900">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="w-2 h-2 rounded-[2px] bg-amber-500 shrink-0" />
+                        <span className="text-[12px] font-semibold truncate">{selectedElement.name}</span>
+                      </div>
+                      <button
+                        onClick={() => setSelectedElement(null)}
+                        className="text-amber-600 hover:text-amber-800 shrink-0 p-0.5 rounded-xs hover:bg-amber-100"
+                        title="Clear selection (Esc)"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <div className="mt-1 text-[11px] font-medium text-amber-800">
+                      Unmapped 3D Element
+                    </div>
+                    <div className="mt-0.5 text-[10px] text-amber-700/80 leading-relaxed">
+                      No programme activity is mapped to element <code className="font-mono font-semibold">{selectedElement.id}</code>. Link via BIM GUID or WBS code in Schedule.
+                    </div>
+                    <div className="mt-1.5 flex items-center justify-between pt-1 border-t border-amber-200/60 text-[9.5px] text-amber-700">
+                      <span>Level: {selectedElement.level}</span>
+                      <span>Discipline: {selectedElement.discipline || "Structural"}</span>
+                    </div>
+                  </div>
+                )
               ) : (
-                <div className="flex items-center gap-2 border border-slate-200/90 bg-white/95 backdrop-blur-md px-2.5 py-1.5 rounded-sm shadow-xs pointer-events-auto text-[11px] font-medium text-slate-700">
-                  <span className="w-1.5 h-1.5 rounded-[1.5px] bg-blue-600 shrink-0" />
+                /* 3. Level Selected (No single element): Display Floor Summary HUD */
+                <div className="flex items-center gap-2.5 border border-slate-200/90 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-md shadow-xs pointer-events-auto text-[11px] font-medium text-slate-700">
+                  <span className={`w-2 h-2 rounded-[2px] shrink-0 ${
+                    selectedLevelRollup.status === "complete" ? "bg-emerald-500" :
+                    selectedLevelRollup.status === "in-progress" ? "bg-blue-600" :
+                    selectedLevelRollup.status === "blocked" ? "bg-red-500" : "bg-slate-300"
+                  }`} />
                   <span className="font-semibold text-slate-900">{selectedLevel}</span>
                   <span className="text-slate-300">·</span>
-                  <span className="text-slate-500">{selectedFloorConfig?.status} ({selectedFloorConfig?.progress}%)</span>
+                  <span className="text-blue-600 font-mono font-semibold">{selectedLevelRollup.avgProgress}% Complete</span>
                   <span className="text-slate-300">·</span>
-                  <span className="text-slate-500">{selectedFloorConfig?.tasksCount} Tasks</span>
+                  <span className="text-slate-500">{selectedLevelRollup.totalTasks} Tasks</span>
+                  {selectedLevelRollup.criticalCount > 0 && (
+                    <>
+                      <span className="text-slate-300">·</span>
+                      <span className="text-red-600 font-semibold flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                        <span>{selectedLevelRollup.criticalCount} Critical</span>
+                      </span>
+                    </>
+                  )}
+                  {selectedLevelRollup.mappedTaskId && (
+                    <button
+                      onClick={() => {
+                        selectTask(selectedLevelRollup.mappedTaskId!);
+                        openDrawer(selectedLevelRollup.mappedTaskId!);
+                      }}
+                      className="ml-1 text-[10.5px] font-semibold text-blue-600 hover:text-blue-700 hover:underline"
+                      title={`Inspect ${selectedLevel} tasks in drawer`}
+                    >
+                      Inspect Floor →
+                    </button>
+                  )}
                 </div>
               )}
             </div>
 
-            {/* ─── TOP-CENTRE: UNIFIED 3D CONTROL SYSTEM (View controls · Navigation · Status legend) (Point 9) ─── */}
+            {/* ─── TOP-CENTRE: UNIFIED 3D CONTROL SYSTEM (View modes · Camera Navigation · Status legend) ─── */}
             <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center h-8 border border-slate-200 bg-white/95 backdrop-blur-md rounded-md shadow-xs px-2 text-[11.5px] select-none max-w-full">
-              {/* 1. View Controls */}
+              {/* 1. View Mode Controls */}
               <div className="flex items-center gap-0.5">
                 {[
-                  { id: "3d", label: "3D", icon: Box, onClick: () => { setViewMode("3d"); setSectionMode(false); }, active: viewMode === "3d" && !sectionMode, title: "Perspective 3D View" },
-                  { id: "2d", label: "2D", icon: Square, onClick: () => { setViewMode("2d"); setSectionMode(false); }, active: viewMode === "2d", title: "Elevation / 2D View" },
-                  { id: "top", label: "Top", icon: Navigation, onClick: () => { setViewMode("top"); setSectionMode(false); }, active: viewMode === "top", title: "Top-down Plan View" },
-                  { id: "sec", label: "Section", icon: Layers, onClick: () => setSectionMode((s) => !s), active: sectionMode, title: "Section Cut at Active Level" },
+                  { id: "3d", label: "3D", icon: Box, onClick: () => handleSetViewMode("3d"), active: viewMode === "3d" && !sectionMode, title: "Perspective 3D View (Shortcut: 1)" },
+                  { id: "2d", label: "2D", icon: Square, onClick: () => handleSetViewMode("2d"), active: viewMode === "2d", title: "Elevation / 2D View (Shortcut: 2)" },
+                  { id: "top", label: "Top", icon: Navigation, onClick: () => handleSetViewMode("top"), active: viewMode === "top", title: "Top-down Plan View (Shortcut: T)" },
+                  { id: "section", label: "Section", icon: Layers, onClick: () => handleSetViewMode(viewMode === "section" ? "3d" : "section"), active: viewMode === "section" || sectionMode, title: "Section Cut View (Shortcut: S)" },
                 ].map((btn) => (
                   <button
                     key={btn.id}
@@ -983,7 +1249,7 @@ export default function Model3DPage() {
                     title={btn.title}
                     className={`flex items-center gap-1 px-2 h-6 rounded font-medium transition-colors ${
                       btn.active
-                        ? "bg-blue-600 text-white font-semibold"
+                        ? "bg-blue-600 text-white font-semibold shadow-xs"
                         : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                     }`}
                   >
@@ -996,11 +1262,11 @@ export default function Model3DPage() {
               {/* Divider */}
               <div className="h-4 w-[1px] bg-slate-200 mx-2 shrink-0" />
 
-              {/* 2. Navigation */}
+              {/* 2. Navigation Mode Controls */}
               <div className="flex items-center gap-0.5">
                 {[
-                  { label: "Orbit", icon: Crosshair, active: dragMode === "orbit", onClick: () => setDragMode("orbit"), title: "Orbit (Left Drag)" },
-                  { label: "Pan", icon: Hand, active: dragMode === "pan", onClick: () => setDragMode("pan"), title: "Pan (Left Drag)" },
+                  { label: "Orbit", icon: Crosshair, active: dragMode === "orbit", onClick: () => setDragMode("orbit"), title: "Orbit Mode (Left Drag · Shortcut: O)" },
+                  { label: "Pan", icon: Hand, active: dragMode === "pan", onClick: () => setDragMode("pan"), title: "Pan Mode (Left Drag · Shortcut: P)" },
                 ].map((btn) => (
                   <button
                     key={btn.label}
@@ -1008,7 +1274,7 @@ export default function Model3DPage() {
                     title={btn.title}
                     className={`flex items-center gap-1 px-2 h-6 rounded font-medium transition-colors ${
                       btn.active
-                        ? "bg-slate-800 text-white font-semibold"
+                        ? "bg-slate-800 text-white font-semibold shadow-xs"
                         : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                     }`}
                   >
@@ -1019,30 +1285,30 @@ export default function Model3DPage() {
 
                 <button
                   onClick={handleZoomIn}
-                  title="Zoom In"
-                  className="flex items-center justify-center w-6 h-6 rounded text-slate-600 hover:bg-slate-100 transition-colors"
+                  title="Zoom In (Shortcut: +)"
+                  className="flex items-center justify-center w-6 h-6 rounded text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                 >
                   <ZoomIn className="h-3.5 w-3.5" />
                 </button>
                 <button
                   onClick={handleZoomOut}
-                  title="Zoom Out"
-                  className="flex items-center justify-center w-6 h-6 rounded text-slate-600 hover:bg-slate-100 transition-colors"
+                  title="Zoom Out (Shortcut: -)"
+                  className="flex items-center justify-center w-6 h-6 rounded text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                 >
                   <ZoomOut className="h-3.5 w-3.5" />
                 </button>
                 <button
                   onClick={handleFit}
-                  title="Fit Building to Viewport"
-                  className="flex items-center gap-1 px-2 h-6 rounded font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+                  title="Fit to Model (Shortcut: F)"
+                  className="flex items-center gap-1 px-2 h-6 rounded font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                 >
                   <Maximize2 className="h-3 w-3" />
                   <span>Fit</span>
                 </button>
                 <button
                   onClick={handleReset}
-                  title="Reset Camera View"
-                  className="flex items-center gap-1 px-2 h-6 rounded font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+                  title="Reset Camera View (Shortcut: R)"
+                  className="flex items-center gap-1 px-2 h-6 rounded font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                 >
                   <RotateCcw className="h-3 w-3" />
                   <span>Reset</span>
@@ -1050,7 +1316,7 @@ export default function Model3DPage() {
                 <button
                   onClick={handleSnapshot}
                   title="Capture 3D Snapshot"
-                  className="flex items-center justify-center w-6 h-6 rounded text-slate-500 hover:bg-slate-100 transition-colors"
+                  className="flex items-center justify-center w-6 h-6 rounded text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                 >
                   <Camera className="h-3.5 w-3.5" />
                 </button>
@@ -1114,14 +1380,22 @@ export default function Model3DPage() {
       {showUploadModal && (
         <UploadModelModal
           onClose={() => setShowUploadModal(false)}
-          onUseModel={(project) => {
+          currentPreset={currentProject}
+          activeImportedModel={importedModel}
+          onUseModel={(project, customModel) => {
             if (project) {
               handleSelectProject(project);
+            }
+            if (customModel !== undefined) {
+              setImportedModel(customModel);
             }
             setShowUploadModal(false);
           }}
         />
       )}
+
+      {/* Baseline Integrity, Revisions & Change History Dialog */}
+      <BaselineRevisionsModal />
     </div>
   );
 }

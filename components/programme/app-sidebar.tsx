@@ -19,12 +19,13 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useProgramme } from "@/lib/programme-context";
+import type { ViewMode } from "@/lib/programme-types";
 
 interface NavItem {
   id: string;
   label: string;
   icon: LucideIcon;
-  viewTarget?: "gantt" | "calendar" | "list";
+  viewTarget?: ViewMode;
 }
 
 const PRIMARY_NAV: NavItem[] = [
@@ -35,6 +36,7 @@ const PRIMARY_NAV: NavItem[] = [
 ];
 
 const PLANNING_NAV: NavItem[] = [
+  { id: "lookahead", label: "Lookahead Planning", icon: Clock, viewTarget: "lookahead" },
   { id: "milestones", label: "Milestones", icon: Flag },
 ];
 
@@ -47,14 +49,14 @@ const CONTROL_NAV: NavItem[] = [
 ];
 
 const REPORTING_NAV: NavItem[] = [
-  { id: "reports", label: "Reports", icon: FileText },
+  { id: "reports", label: "Reports", icon: FileText, viewTarget: "reports" },
   { id: "client-view", label: "Client View", icon: ExternalLink },
 ];
 
 export function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { setActiveView } = useProgramme();
+  const { state, setActiveView } = useProgramme();
 
   const handleNavClick = (item: NavItem) => {
     if (item.id === "programme") {
@@ -178,12 +180,22 @@ export function AppSidebar() {
           <nav className="space-y-0.5">
             {REPORTING_NAV.map((item) => {
               const Icon = item.icon;
+              const isActive = item.viewTarget && state.activeView === item.viewTarget;
               return (
                 <button
                   key={item.id}
-                  className="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                  onClick={() => handleNavClick(item)}
+                  className={`group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors ${
+                    isActive
+                      ? "bg-slate-100 text-slate-900 font-semibold"
+                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
                 >
-                  <Icon className="h-[17px] w-[17px] shrink-0 text-slate-400 group-hover:text-slate-600" />
+                  <Icon
+                    className={`h-[17px] w-[17px] shrink-0 ${
+                      isActive ? "text-blue-600" : "text-slate-400 group-hover:text-slate-600"
+                    }`}
+                  />
                   <span>{item.label}</span>
                 </button>
               );

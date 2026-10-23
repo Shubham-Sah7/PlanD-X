@@ -17,15 +17,20 @@ import {
   Check,
   RotateCcw,
   Plus,
+  GitCompare,
+  Clock,
+  FileText,
 } from "lucide-react";
 import { useProgramme } from "@/lib/programme-context";
 import type { ViewMode, ZoomLevel } from "@/lib/programme-types";
 
 const VIEWS: { id: ViewMode; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: "gantt", label: "Gantt", icon: GanttChartSquare },
+  { id: "lookahead", label: "Lookahead", icon: Clock },
   { id: "network", label: "Network", icon: Network },
   { id: "list", label: "List", icon: List },
   { id: "calendar", label: "Calendar", icon: Calendar },
+  { id: "reports", label: "Reports", icon: FileText },
 ];
 
 const ZOOM_LEVELS: { id: ZoomLevel; label: string }[] = [
@@ -48,8 +53,14 @@ export function ProgrammeToolbar() {
     autoLayoutMode,
     setAutoLayoutMode,
     setAttentionFilter,
+    showBaselineComparison,
+    toggleBaselineComparison,
+    setShowBaselineComparison,
+    selectedBaselineVersion,
+    setSelectedBaselineVersion,
   } = useProgramme();
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const [baselineMenuOpen, setBaselineMenuOpen] = useState(false);
   const [autoLayoutOpen, setAutoLayoutOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [dateRangeIndex, setDateRangeIndex] = useState(0);
@@ -517,6 +528,111 @@ export function ProgrammeToolbar() {
                 </button>
               );
             })}
+          </div>
+
+          {/* Baseline vs Current Programme Comparison Button (Strict 36px height) */}
+          <div className="relative">
+            <div
+              className={`inline-flex h-9 items-center rounded-md border transition-colors shadow-2xs ${
+                showBaselineComparison
+                  ? "border-blue-400 bg-blue-50/70"
+                  : "border-slate-200 bg-white"
+              }`}
+            >
+              <button
+                id="toolbar-compare-baseline-btn"
+                type="button"
+                onClick={toggleBaselineComparison}
+                className={`inline-flex h-8 items-center gap-1.5 rounded-l-md px-2.5 text-[12.5px] font-medium transition-colors ${
+                  showBaselineComparison
+                    ? "bg-blue-600 text-white font-semibold"
+                    : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                }`}
+                title="Toggle Baseline vs Current comparison"
+              >
+                <GitCompare className="h-3.5 w-3.5" />
+                <span>Compare Baseline</span>
+                {showBaselineComparison && (
+                  <span className="ml-0.5 rounded-xs bg-blue-700/80 px-1 py-0.2 text-[9.5px] font-mono text-white">
+                    ON
+                  </span>
+                )}
+              </button>
+              <button
+                id="toolbar-baseline-menu-btn"
+                type="button"
+                onClick={() => setBaselineMenuOpen(!baselineMenuOpen)}
+                className={`flex h-8 w-6 items-center justify-center rounded-r-md transition-colors border-l ${
+                  showBaselineComparison
+                    ? "border-blue-500 bg-blue-600 text-blue-100 hover:bg-blue-700"
+                    : "border-slate-100 text-slate-400 hover:text-slate-700 hover:bg-slate-50"
+                }`}
+                title="Select baseline reference schedule"
+              >
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            {baselineMenuOpen && (
+              <div className="absolute right-0 top-full mt-1 w-64 rounded-md border border-slate-200 bg-white p-2.5 shadow-xl z-50 animate-in fade-in-50 zoom-in-95">
+                <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-100 px-1">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                    Reference Baseline
+                  </span>
+                  <button
+                    onClick={() => setBaselineMenuOpen(false)}
+                    className="text-[11px] text-blue-600 hover:underline"
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div className="space-y-1">
+                  {[
+                    { id: "ver-b0", name: "Baseline 0 (Contract)", state: "Locked", count: "17 tasks" },
+                    { id: "ver-ab", name: "Approved Baseline 1.1", state: "Approved", count: "24 tasks" },
+                  ].map((base) => (
+                    <button
+                      key={base.id}
+                      onClick={() => {
+                        setSelectedBaselineVersion(base.id);
+                        setShowBaselineComparison(true);
+                        setBaselineMenuOpen(false);
+                      }}
+                      className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[12px] transition-colors ${
+                        selectedBaselineVersion === base.id
+                          ? "bg-blue-50 text-blue-800 font-medium"
+                          : "text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div>
+                        <div className="font-medium text-slate-800">{base.name}</div>
+                        <div className="text-[10.5px] text-slate-400">{base.state} · {base.count}</div>
+                      </div>
+                      {selectedBaselineVersion === base.id && (
+                        <Check className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-2.5 pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => {
+                      toggleBaselineComparison();
+                      setBaselineMenuOpen(false);
+                    }}
+                    className={`flex w-full items-center justify-center rounded px-2.5 py-1.5 text-[12px] font-medium transition-colors ${
+                      showBaselineComparison
+                        ? "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                        : "bg-blue-600 text-white hover:bg-blue-700"
+                    }`}
+                  >
+                    {showBaselineComparison ? "Turn Off Comparison" : "Turn On Comparison"}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Date Range Navigation (Strict 36px height) */}

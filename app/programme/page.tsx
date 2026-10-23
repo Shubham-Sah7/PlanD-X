@@ -8,11 +8,17 @@ import { ProgrammeHeader } from "@/components/programme/programme-header";
 import { SummaryCards } from "@/components/programme/summary-cards";
 import { ProgrammeToolbar } from "@/components/programme/programme-toolbar";
 import { GanttView } from "@/components/programme/gantt/gantt-view";
+import { LookaheadView } from "@/components/programme/lookahead/lookahead-view";
 import { CalendarView } from "@/components/programme/calendar/calendar-view";
 import { ListView } from "@/components/programme/list/list-view";
 import { NetworkView } from "@/components/programme/network/network-view";
 import { TaskDrawer } from "@/components/programme/task-drawer";
 import { MobileProgramme } from "@/components/programme/mobile/mobile-programme";
+import { ProjectCalendarModal } from "@/components/programme/calendar/project-calendar-modal";
+import { ProgrammeReportView } from "@/components/programme/reporting/programme-report-view";
+import { ExportModal } from "@/components/programme/reporting/export-modal";
+import { MspImportModal } from "@/components/programme/msp-import-modal";
+import { BaselineRevisionsModal } from "@/components/programme/baseline/baseline-revisions-modal";
 import Model3DPage from "./3d/page";
 
 export default function ProgrammePage() {
@@ -26,7 +32,12 @@ export default function ProgrammePage() {
 
   // 3D Model View (PlanD-X Programme 3D interface matching reference screenshot)
   if (state.activeView === "3d") {
-    return <Model3DPage />;
+    return (
+      <>
+        <Model3DPage />
+        <BaselineRevisionsModal />
+      </>
+    );
   }
 
   return (
@@ -56,9 +67,11 @@ export default function ProgrammePage() {
             <div className="flex flex-1 gap-4 items-stretch min-h-[520px] pb-3">
               <div className="flex-1 min-w-0 overflow-hidden">
                 {state.activeView === "gantt" && <GanttView />}
+                {state.activeView === "lookahead" && <LookaheadView />}
                 {state.activeView === "calendar" && <CalendarView />}
                 {state.activeView === "list" && <ListView />}
                 {state.activeView === "network" && <NetworkView />}
+                {state.activeView === "reports" && <ProgrammeReportView />}
               </div>
 
               {/* Right Task Detail Drawer (Matching Image 4) */}
@@ -67,6 +80,18 @@ export default function ProgrammePage() {
           </div>
         </main>
       </div>
+
+      {/* Project Working Calendar & Shift Configuration Modal */}
+      <ProjectCalendarModal />
+
+      {/* Programme Export & Report Dialog */}
+      <ExportModal />
+
+      {/* Microsoft Project Schedule Import Dialog */}
+      <MspImportModal />
+
+      {/* Baseline Integrity, Revisions & Change History Dialog */}
+      <BaselineRevisionsModal />
     </div>
   );
 }

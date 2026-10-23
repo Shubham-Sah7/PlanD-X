@@ -3,6 +3,12 @@
 import React, { useState, useMemo } from "react";
 import { useProgramme } from "@/lib/programme-context";
 import type { TaskStatus, Trade } from "@/lib/programme-types";
+import { ResourceAssignmentDropdown } from "@/components/programme/resources/resource-assignment-dropdown";
+import {
+  generateProgrammeReportData,
+  exportProgrammeToCsv,
+  downloadReportFile,
+} from "@/lib/programme-reporting";
 import {
   Building2,
   Search,
@@ -141,6 +147,7 @@ interface PhaseDef {
       trade: Trade;
       assignee: string;
       assigneeInitials: string;
+      subcontractor?: string;
     }[];
   }[];
 }
@@ -522,7 +529,7 @@ type SortField = "wbs" | "name" | "start" | "finish" | "duration" | "progress";
 type SortOrder = "asc" | "desc";
 
 export function ListView() {
-  const { state, selectTask, openDrawer } = useProgramme();
+  const { state, selectTask, openDrawer, projectCalendar } = useProgramme();
 
   // Expanded nodes state: default to expanding Phase 1 and WP 1.1
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(
@@ -1087,7 +1094,15 @@ export function ListView() {
                 <div className="h-px bg-slate-100 my-1" />
                 <button
                   onClick={() => {
-                    alert("Exporting WBS schedule to CSV...");
+                    const report = generateProgrammeReportData(state.tasks, projectCalendar, {
+                      projectName: "Ormiston Rise — Building 2 & Unit 80",
+                      reportingDate: "2025-10-15",
+                    });
+                    const csv = exportProgrammeToCsv(report);
+                    downloadReportFile(
+                      csv,
+                      `PlanD-X_WBS_Schedule_${report.reportingDate.replace(/-/g, "")}.csv`
+                    );
                     setAddTaskDropdownOpen(false);
                   }}
                   className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12px] text-slate-600 hover:bg-slate-50 transition-colors"
@@ -1605,22 +1620,19 @@ export function ListView() {
                                   )}
                                 </div>
 
-                                {/* Assignee: High-Res Avatar + Name */}
-                                <div className="w-36 shrink-0 flex items-center gap-2 truncate pr-2">
-                                  {currentAssignee ? (
-                                    <>
-                                      <div
-                                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold shadow-2xs ring-1 ring-white ${avatar.bg} ${avatar.text}`}
-                                      >
-                                        {initials}
-                                      </div>
-                                      <span className="text-slate-800 text-[12px] font-medium truncate">
-                                        {currentAssignee}
-                                      </span>
-                                    </>
-                                  ) : (
-                                    <span className="text-slate-400">—</span>
-                                  )}
+                                {/* Subcontractor / Assignee Dropdown */}
+                                <div
+                                  className="w-36 shrink-0 flex items-center truncate pr-2"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <ResourceAssignmentDropdown
+                                    taskId={task.id}
+                                    taskName={task.name}
+                                    currentAssignee={currentAssignee}
+                                    currentInitials={initials}
+                                    currentSubcontractor={task.subcontractor}
+                                    compact={true}
+                                  />
                                 </div>
 
                                 {/* Actions */}

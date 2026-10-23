@@ -65,6 +65,7 @@ export function SummaryCards() {
   } | null>(null);
 
   const hasFilter = attentionFilter !== "all" || Boolean(state.filters.search?.trim());
+  const criticalCount = state.tasks.filter((t) => t.isCritical).length;
 
   // Filter label resolver
   const getFilterDescription = () => {
@@ -76,7 +77,7 @@ export function SummaryCards() {
       case "due-this-week":
         return "12 Tasks Due This Week";
       case "critical":
-        return "236 Critical Path Tasks";
+        return `${criticalCount} Critical Path Tasks`;
       case "in-progress":
         return "14 Active In-Progress Tasks";
       case "complete":
@@ -212,7 +213,7 @@ export function SummaryCards() {
             title="Toggle Critical Path Schedule Highlight"
           >
             <Link2 className="h-3 w-3 -rotate-45 text-red-600" />
-            <span>Critical Path (236)</span>
+            <span>Critical Path ({criticalCount})</span>
           </button>
 
           <button

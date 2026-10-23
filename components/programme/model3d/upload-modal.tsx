@@ -2,54 +2,85 @@
 
 import React, { useState, useRef } from "react";
 import {
-  Upload, X, CheckCircle2, Loader2, FileBox, FolderOpen,
-  Building2, Layers, Check, ArrowRight,
+  Upload,
+  X,
+  CheckCircle2,
+  Loader2,
+  FileBox,
+  Building2,
+  Check,
+  ArrowRight,
+  AlertTriangle,
+  Info,
+  RefreshCw,
 } from "lucide-react";
-import { PROJECT_PRESETS, type ProjectModelPreset } from "./model-data";
-
-type UploadStep = "idle" | "uploading" | "processing" | "connecting" | "ready";
+import {
+  type ProjectModelPreset,
+  PROJECT_PRESETS,
+} from "./model-data";
+import {
+  type ImportedModelData,
+  validateModelFile,
+  loadModelFromFile,
+  loadSampleStructuralModel,
+} from "@/lib/programme-model-loader";
 
 interface UploadModelModalProps {
   onClose: () => void;
-  onUseModel: (project?: ProjectModelPreset) => void;
+  onUseModel: (project?: ProjectModelPreset, importedModel?: ImportedModelData | null) => void;
+  currentPreset?: ProjectModelPreset;
+  activeImportedModel?: ImportedModelData | null;
 }
 
-export function UploadModelModal({ onClose, onUseModel }: UploadModelModalProps) {
+export function UploadModelModal({
+  onClose,
+  onUseModel,
+  currentPreset = PROJECT_PRESETS[0],
+  activeImportedModel = null,
+}: UploadModelModalProps) {
   const [activeTab, setActiveTab] = useState<"upload" | "presets">("upload");
-  const [step, setStep] = useState<UploadStep>("idle");
-  const [progress, setProgress] = useState(0);
-  const [fileName, setFileName] = useState("");
-  const [selectedPreset, setSelectedPreset] = useState<ProjectModelPreset>(PROJECT_PRESETS[0]);
+  const [status, setStatus] = useState<"idle" | "parsing" | "ready" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [recommendation, setRecommendation] = useState<string | null>(null);
+  const [parsedModel, setParsedModel] = useState<ImportedModelData | null>(null);
+  const [selectedPreset, setSelectedPreset] = useState<ProjectModelPreset>(currentPreset);
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const startUploadSimulation = (name: string, project?: ProjectModelPreset) => {
-    setFileName(name);
-    setStep("uploading");
-    setProgress(0);
+  const processFile = async (file: File) => {
+    // 1. Pre-validation
+    const validation = validateModelFile(file.name, file.size);
+    if (!validation.valid) {
+      setStatus("error");
+      setErrorMessage(validation.error || "Unsupported file format.");
+      setRecommendation(validation.recommendation || null);
+      setParsedModel(null);
+      return;
+    }
 
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        if (p >= 100) {
-          clearInterval(interval);
-          setStep("processing");
-          setTimeout(() => {
-            setStep("connecting");
-            setTimeout(() => {
-              setStep("ready");
-            }, 1200);
-          }, 1200);
-          return 100;
-        }
-        return p + 16;
-      });
-    }, 150);
+    // 2. Real parsing state
+    setStatus("parsing");
+    setErrorMessage(null);
+    setRecommendation(null);
+
+    try {
+      const modelData = await loadModelFromFile(file);
+      setParsedModel(modelData);
+      setStatus("ready");
+    } catch (err: any) {
+      setStatus("error");
+      setErrorMessage(err?.message || "Failed to parse 3D model geometry.");
+      setRecommendation(
+        "Please check that the file is an intact GLB, GLTF, or OBJ file and not corrupted."
+      );
+      setParsedModel(null);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      startUploadSimulation(file.name);
+      processFile(file);
     }
   };
 
@@ -58,16 +89,35 @@ export function UploadModelModal({ onClose, onUseModel }: UploadModelModalProps)
     setIsDragging(false);
     const file = e.dataTransfer.files?.[0];
     if (file) {
-      startUploadSimulation(file.name);
+      processFile(file);
     }
   };
 
-  const stepsList = [
-    { id: "uploading",  label: "Uploading model",           active: step === "uploading",  done: step !== "idle" && step !== "uploading" },
-    { id: "processing", label: "Processing geometry",       active: step === "processing", done: step === "connecting" || step === "ready" },
-    { id: "connecting", label: "Connecting programme data", active: step === "connecting", done: step === "ready" },
-    { id: "ready",      label: "Model ready",               active: step === "ready",      done: step === "ready" },
-  ];
+  const handleLoadSample = async () => {
+    setStatus("parsing");
+    setErrorMessage(null);
+    setRecommendation(null);
+    try {
+      const sample = await loadSampleStructuralModel();
+      setParsedModel(sample);
+      setStatus("ready");
+    } catch (err: any) {
+      setStatus("error");
+      setErrorMessage(err?.message || "Failed to load sample structural model.");
+      setRecommendation("Please check network connectivity or try uploading a local model file.");
+      setParsedModel(null);
+    }
+  };
+
+  const handleApplyImportedModel = () => {
+    if (parsedModel) {
+      onUseModel(selectedPreset, parsedModel);
+    }
+  };
+
+  const handleResetToProject = () => {
+    onUseModel(selectedPreset, null);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -86,9 +136,9 @@ export function UploadModelModal({ onClose, onUseModel }: UploadModelModalProps)
               <Upload className="h-4 w-4" />
             </div>
             <div>
-              <h2 className="text-[15px] font-bold text-slate-900">Upload Project Model</h2>
+              <h2 className="text-[15px] font-bold text-slate-900">Project Model & 3D Import</h2>
               <p className="text-[11px] text-slate-400">
-                Connect your construction programme spatially to building geometry
+                Display construction geometry in the 3D Programme view
               </p>
             </div>
           </div>
@@ -100,8 +150,8 @@ export function UploadModelModal({ onClose, onUseModel }: UploadModelModalProps)
           </button>
         </div>
 
-        {/* Tab Switcher: Upload File vs Select Pre-configured Building */}
-        {step === "idle" && (
+        {/* Tab Switcher: Import File vs Select Pre-configured Archetype */}
+        {status === "idle" && (
           <div className="flex border-b border-slate-200 px-6 bg-slate-50/50">
             <button
               onClick={() => setActiveTab("upload")}
@@ -111,7 +161,7 @@ export function UploadModelModal({ onClose, onUseModel }: UploadModelModalProps)
                   : "border-transparent text-slate-500 hover:text-slate-700"
               }`}
             >
-              Upload Model File
+              Import 3D Model File
             </button>
             <button
               onClick={() => setActiveTab("presets")}
@@ -121,67 +171,95 @@ export function UploadModelModal({ onClose, onUseModel }: UploadModelModalProps)
                   : "border-transparent text-slate-500 hover:text-slate-700"
               }`}
             >
-              Building Types & Presets
+              Building Archetypes & Presets
             </button>
           </div>
         )}
 
-        {/* Body content */}
+        {/* Modal Body */}
         <div className="px-6 py-5">
-          {step === "idle" && activeTab === "upload" && (
+          {/* Active Model Indicator if already loaded */}
+          {activeImportedModel && status === "idle" && (
+            <div className="mb-4 flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50/70 p-3">
+              <div className="flex items-center gap-2.5">
+                <FileBox className="h-4 w-4 text-blue-600 shrink-0" />
+                <div>
+                  <p className="text-[11.5px] font-bold text-slate-900">
+                    Active Custom Model: {activeImportedModel.fileName}
+                  </p>
+                  <p className="text-[10px] text-slate-500">
+                    {activeImportedModel.meshCount} meshes · {activeImportedModel.vertexCount.toLocaleString()} vertices
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleResetToProject}
+                className="text-[11px] font-semibold text-blue-700 hover:text-blue-800 underline underline-offset-2"
+              >
+                Reset to Default
+              </button>
+            </div>
+          )}
+
+          {/* Tab 1: Upload File */}
+          {status === "idle" && activeTab === "upload" && (
             <div className="space-y-4">
-              {/* Drop area */}
+              {/* Drop Area */}
               <div
-                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleDrop}
                 onClick={() => inputRef.current?.click()}
-                className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-9 text-center transition-all cursor-pointer ${
+                className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition-all cursor-pointer ${
                   isDragging
                     ? "border-blue-500 bg-blue-50/60"
                     : "border-slate-300 bg-slate-50/60 hover:border-blue-400 hover:bg-blue-50/30"
                 }`}
               >
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100/70 text-blue-600 mb-3 shadow-2xs">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100/70 text-blue-600 mb-2.5 shadow-2xs">
                   <Upload className="h-6 w-6" />
                 </div>
                 <p className="text-[13.5px] font-bold text-slate-800 mb-1">
-                  Drag and drop model file here
+                  Drag and drop 3D model here
                 </p>
-                <p className="text-[11.5px] text-slate-400 mb-3.5">
-                  or browse your computer for local BIM / 3D files
+                <p className="text-[11.5px] text-slate-400 mb-3">
+                  Select a 3D construction model to display in the Programme view
                 </p>
 
-                {/* Formats */}
-                <div className="flex items-center gap-1.5 flex-wrap justify-center">
-                  {["IFC", "OBJ", "GLB / GLTF"].map((fmt) => (
-                    <span
-                      key={fmt}
-                      className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-semibold text-slate-600 shadow-2xs"
-                    >
-                      {fmt}
-                    </span>
-                  ))}
+                {/* Formats Badges */}
+                <div className="flex items-center gap-1.5 flex-wrap justify-center mb-2">
+                  <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-700 shadow-2xs">
+                    GLB / GLTF (Supported)
+                  </span>
+                  <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-700 shadow-2xs">
+                    OBJ (Supported)
+                  </span>
                 </div>
+                <p className="text-[10px] text-slate-400">
+                  Note: IFC, RVT, and NWD formats require export to GLB or OBJ
+                </p>
 
                 <input
                   ref={inputRef}
                   type="file"
                   className="hidden"
-                  accept=".ifc,.obj,.glb,.gltf"
+                  accept=".glb,.gltf,.obj,.ifc,.rvt,.nwd"
                   onChange={handleFileChange}
                 />
               </div>
 
-              {/* Sample model shortcut */}
-              <div className="pt-2">
+              {/* Sample Structural Frame Action */}
+              <div className="pt-1">
                 <button
-                  onClick={() => startUploadSimulation("Ormiston_Rise_BIM_v3.glb", PROJECT_PRESETS[0])}
-                  className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-[12px] font-medium text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition-colors"
+                  onClick={handleLoadSample}
+                  className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-2.5 text-[12px] font-medium text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition-colors"
                 >
                   <div className="flex items-center gap-2.5">
-                    <FileBox className="h-4 w-4 text-blue-600" />
-                    <span>Load sample model — <strong>Ormiston Rise (Building 2)</strong></span>
+                    <Building2 className="h-4 w-4 text-blue-600" />
+                    <span>Load sample real model — <strong>Structural Frame (.obj)</strong></span>
                   </div>
                   <ArrowRight className="h-4 w-4 text-slate-400" />
                 </button>
@@ -189,10 +267,11 @@ export function UploadModelModal({ onClose, onUseModel }: UploadModelModalProps)
             </div>
           )}
 
-          {step === "idle" && activeTab === "presets" && (
+          {/* Tab 2: Architectural Archetypes / Presets */}
+          {status === "idle" && activeTab === "presets" && (
             <div className="space-y-2.5">
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                Select Architectural Archetype
+                Select Architectural Archetype (With Mapped WBS Tasks)
               </p>
               {PROJECT_PRESETS.map((preset) => {
                 const isSelected = selectedPreset.id === preset.id;
@@ -200,27 +279,28 @@ export function UploadModelModal({ onClose, onUseModel }: UploadModelModalProps)
                   <div
                     key={preset.id}
                     onClick={() => setSelectedPreset(preset)}
-                    className={`flex items-start justify-between rounded-xl border p-3.5 transition-all cursor-pointer ${
+                    className={`flex items-start justify-between rounded-xl border p-3 transition-all cursor-pointer ${
                       isSelected
                         ? "border-blue-600 bg-blue-50/40 shadow-xs"
                         : "border-slate-200 hover:border-slate-300 bg-white"
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      <div className={`flex h-9 w-9 items-center justify-center rounded-lg mt-0.5 ${
-                        isSelected ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"
-                      }`}>
-                        <Building2 className="h-5 w-5" />
+                      <div
+                        className={`flex h-8 w-8 items-center justify-center rounded-lg mt-0.5 ${
+                          isSelected ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        <Building2 className="h-4 w-4" />
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <h4 className="text-[13px] font-bold text-slate-900">{preset.name}</h4>
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9.5px] font-semibold text-slate-600">
+                          <h4 className="text-[12.5px] font-bold text-slate-900">{preset.name}</h4>
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-semibold text-slate-600">
                             {preset.category}
                           </span>
                         </div>
                         <p className="text-[11px] text-slate-500 mt-0.5">{preset.building}</p>
-                        <p className="text-[10.5px] text-slate-400 mt-1">{preset.description}</p>
                       </div>
                     </div>
 
@@ -235,84 +315,121 @@ export function UploadModelModal({ onClose, onUseModel }: UploadModelModalProps)
 
               <div className="pt-2">
                 <button
-                  onClick={() => startUploadSimulation(`${selectedPreset.name}.ifc`, selectedPreset)}
+                  onClick={() => onUseModel(selectedPreset, null)}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-2.5 text-[12.5px] font-semibold text-white hover:bg-blue-700 transition-colors shadow-xs"
                 >
-                  <span>Load {selectedPreset.name}</span>
+                  <span>Use {selectedPreset.name} (Mapped Model)</span>
                   <ArrowRight className="h-4 w-4" />
                 </button>
               </div>
             </div>
           )}
 
-          {/* Upload progress & connection state (Requirements 25 & 26) */}
-          {step !== "idle" && (
-            <div className="space-y-5 py-2">
-              <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 text-blue-600 shrink-0">
-                  <FileBox className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="font-bold text-slate-900 text-[13px] truncate">{fileName}</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    {step === "uploading" ? `Uploading geometry: ${progress}%` : "Processing model geometry & metadata"}
-                  </p>
+          {/* Parsing State */}
+          {status === "parsing" && (
+            <div className="py-8 text-center space-y-3">
+              <Loader2 className="h-8 w-8 text-blue-600 animate-spin mx-auto" />
+              <h3 className="text-[14px] font-bold text-slate-900">Parsing 3D Geometry</h3>
+              <p className="text-[12px] text-slate-500 max-w-sm mx-auto">
+                Validating mesh buffers, computing bounding box dimensions, and preparing Three.js geometry…
+              </p>
+            </div>
+          )}
 
-                  {step === "uploading" && (
-                    <div className="mt-2 h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-blue-600 transition-all duration-150"
-                        style={{ width: `${progress}%` }}
-                      />
-                    </div>
-                  )}
+          {/* Error State */}
+          {status === "error" && (
+            <div className="space-y-4 py-2">
+              <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50/80 p-3.5">
+                <AlertTriangle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+                <div className="space-y-1 text-[12px]">
+                  <p className="font-bold text-red-900">{errorMessage}</p>
+                  {recommendation && <p className="text-red-700 text-[11.5px]">{recommendation}</p>}
                 </div>
               </div>
 
-              {/* 4 Steps Checklist */}
-              <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-                {stepsList.map((st) => (
-                  <div key={st.id} className="flex items-center justify-between text-[12px]">
-                    <div className="flex items-center gap-2.5">
-                      {st.done ? (
-                        <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-                      ) : st.active ? (
-                        <Loader2 className="h-4 w-4 text-blue-600 animate-spin shrink-0" />
-                      ) : (
-                        <div className="h-4 w-4 rounded-full border-2 border-slate-200 shrink-0" />
-                      )}
-                      <span
-                        className={`font-medium ${
-                          st.done
-                            ? "text-emerald-700 font-semibold"
-                            : st.active
-                            ? "text-blue-600 font-bold"
-                            : "text-slate-400"
-                        }`}
-                      >
-                        {st.label}
-                      </span>
-                    </div>
-
-                    {st.done && (
-                      <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">
-                        Complete
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Ready Button */}
-              {step === "ready" && (
+              <div className="flex items-center gap-2 pt-2">
                 <button
-                  onClick={() => onUseModel(selectedPreset)}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-[13px] font-bold text-white hover:bg-blue-700 transition-colors shadow-md"
+                  onClick={() => {
+                    setStatus("idle");
+                    setErrorMessage(null);
+                    setRecommendation(null);
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 py-2.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
                 >
-                  <span>Open 3D Programme</span>
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Try Another File
+                </button>
+                <button
+                  onClick={onClose}
+                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Ready / Success State */}
+          {status === "ready" && parsedModel && (
+            <div className="space-y-4 py-2">
+              {/* File details card */}
+              <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3.5">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-bold text-slate-900 truncate">
+                    {parsedModel.fileName}
+                  </p>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    Format: <span className="font-semibold uppercase">{parsedModel.fileType}</span> · Size: {(parsedModel.fileSize / 1024).toFixed(1)} KB
+                  </p>
+                </div>
+              </div>
+
+              {/* Geometry Stats */}
+              <div className="grid grid-cols-3 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-center">
+                <div>
+                  <p className="text-[10px] font-medium text-slate-400 uppercase">Meshes</p>
+                  <p className="text-[14px] font-bold text-slate-800">{parsedModel.meshCount}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-medium text-slate-400 uppercase">Vertices</p>
+                  <p className="text-[14px] font-bold text-slate-800">{parsedModel.vertexCount.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-medium text-slate-400 uppercase">Dimensions</p>
+                  <p className="text-[11.5px] font-bold text-slate-800">
+                    {parsedModel.boundingBox.size[0].toFixed(1)}m × {parsedModel.boundingBox.size[1].toFixed(1)}m
+                  </p>
+                </div>
+              </div>
+
+              {/* Data Integrity Notice */}
+              <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-[11.5px] text-amber-900">
+                <Info className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <p>
+                  <strong>Data Integrity Note:</strong> Raw 3D mesh files do not carry PlanD-X WBS task associations. The model geometry will be displayed with full camera and orbit controls; project schedule dates remain connected to your programme.
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  onClick={() => {
+                    setStatus("idle");
+                    setParsedModel(null);
+                  }}
+                  className="rounded-xl border border-slate-200 px-3 py-2.5 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleApplyImportedModel}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-blue-600 py-2.5 text-[12.5px] font-bold text-white hover:bg-blue-700 transition-colors shadow-sm"
+                >
+                  <span>Display in 3D Programme</span>
                   <ArrowRight className="h-4 w-4" />
                 </button>
-              )}
+              </div>
             </div>
           )}
         </div>
