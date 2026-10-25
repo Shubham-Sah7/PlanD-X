@@ -22,6 +22,7 @@ import {
   isWorkingDay,
 } from "@/lib/programme-calendar";
 import { ResourceAssignmentDropdown } from "@/components/programme/resources/resource-assignment-dropdown";
+import { EmptyProjectState } from "../empty-project-state";
 import {
   Calendar,
   Clock,
@@ -64,6 +65,10 @@ export function LookaheadView() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [groupBy, setGroupBy] = useState<"week" | "readiness" | "trade" | "none">("week");
   const [showTimelinePreview, setShowTimelinePreview] = useState<boolean>(true);
+
+  if (state.tasks.length === 0) {
+    return <EmptyProjectState />;
+  }
 
   // 1. Compute Lookahead Date Window using Project Calendar
   const dateRange = useMemo(() => {

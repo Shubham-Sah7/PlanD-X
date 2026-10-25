@@ -10,4 +10,13 @@
  */
 export type * from './models/User'
 export type * from './models/Post'
+export type * from './models/Project'
+export type * from './models/Programme'
+export type * from './models/Task'
+export type * from './models/Dependency'
+export type * from './models/ResourceAssignment'
+export type * from './models/Baseline'
+export type * from './models/ProgrammeRevision'
+export type * from './models/AuditEvent'
+export type * from './models/ProgrammeLock'
 export type * from './commonInputTypes'

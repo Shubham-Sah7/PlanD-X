@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import type { ProgrammeTask } from "@/lib/programme-types";
 import { useProgramme } from "@/lib/programme-context";
 import {
@@ -21,6 +21,7 @@ import {
   Lock,
   RotateCcw,
   Flame,
+  Plus,
 } from "lucide-react";
 import { ResourceAssignmentDropdown } from "@/components/programme/resources/resource-assignment-dropdown";
 import { calculateScheduleVariance, formatVarianceDisplay } from "@/lib/programme-calendar";
@@ -151,7 +152,22 @@ export function WBSTree({
     collapseAll,
     showBaselineComparison,
     projectCalendar,
+    createTask,
+    openAddTask,
   } = useProgramme();
+
+  const [quickAddName, setQuickAddName] = useState("");
+  const handleQuickAdd = (kind: "task" | "milestone" | "summary" = "task") => {
+    const trimmed = quickAddName.trim();
+    if (!trimmed) return;
+    createTask({
+      name: trimmed,
+      isMilestone: kind === "milestone",
+      isSummary: kind === "summary",
+      duration: kind === "milestone" ? 0 : 5,
+    });
+    setQuickAddName("");
+  };
 
   // Column visibility controls (persisted in localStorage)
   const [visibleColumns, setVisibleColumns] = useState<ColumnVisibility>(() => {
@@ -177,6 +193,42 @@ export function WBSTree({
 
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
   const columnsMenuRef = useRef<HTMLDivElement | null>(null);
+
+  // Virtualization state for large construction programmes
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(800);
+
+  useEffect(() => {
+    const el = scrollRef?.current;
+    if (!el) return;
+    setViewportHeight(el.clientHeight || 800);
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect.height > 0) {
+          setViewportHeight(entry.contentRect.height);
+        }
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [scrollRef]);
+
+  const handleContainerScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      setScrollTop(e.currentTarget.scrollTop);
+      if (onScroll) onScroll(e);
+    },
+    [onScroll]
+  );
+
+  const ROW_HEIGHT = 40;
+  const OVERSCAN = 12;
+  const totalCount = tasks.length;
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+  const endIndex = Math.min(totalCount, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN);
+  const topSpacerHeight = startIndex * ROW_HEIGHT;
+  const bottomSpacerHeight = Math.max(0, (totalCount - endIndex) * ROW_HEIGHT);
+  const visibleSlice = useMemo(() => tasks.slice(startIndex, endIndex), [tasks, startIndex, endIndex]);
 
   // Close columns dropdown on outside click
   useEffect(() => {
@@ -643,14 +695,15 @@ export function WBSTree({
         )}
       </div>
 
-      {/* Table Rows with synchronized vertical scrolling */}
+      {/* Table Rows with synchronized vertical scrolling and virtualization */}
       <div
         ref={scrollRef}
-        onScroll={onScroll}
+        onScroll={handleContainerScroll}
         style={{ minWidth: `${totalTableMinWidth}px` }}
         className="flex-1 divide-y divide-slate-100 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        {tasks.map((task) => {
+        <div style={{ height: `${topSpacerHeight}px` }} aria-hidden="true" />
+        {visibleSlice.map((task) => {
           const isSelected = state.selectedTaskId === task.id;
           const isExpanded = state.expandedNodes.has(task.id);
           const hasChildren = task.children.length > 0;
@@ -1016,6 +1069,63 @@ export function WBSTree({
             </div>
           );
         })}
+        <div style={{ height: `${bottomSpacerHeight}px` }} aria-hidden="true" />
+
+        {/* Quick In-Grid Add Row (Microsoft Project Spreadsheet Speed) */}
+        <div
+          className="flex items-center h-9 border-b border-dashed border-slate-300 hover:border-blue-400 bg-slate-50/50 hover:bg-blue-50/20 px-3 transition-colors select-none group sticky bottom-0 z-10 bg-white/95 backdrop-blur-xs"
+          style={{ width: `${totalTableMinWidth}px` }}
+        >
+          <div className="flex items-center gap-2 w-full">
+            <Plus className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 shrink-0 transition-colors" />
+            <input
+              id="wbs-quick-add-input"
+              type="text"
+              value={quickAddName}
+              onChange={(e) => setQuickAddName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleQuickAdd("task");
+                if (e.key === "Escape") setQuickAddName("");
+              }}
+              placeholder="+ Type task name and press Enter..."
+              className="w-64 bg-transparent text-[12px] font-medium text-slate-800 placeholder:text-slate-400 outline-none border-none py-1 focus:ring-0"
+            />
+            <div className="flex items-center gap-1.5 ml-auto pr-2">
+              <button
+                type="button"
+                onClick={() => handleQuickAdd("task")}
+                className="px-2 py-0.5 text-[11px] rounded bg-white border border-slate-200 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 font-medium transition-colors cursor-pointer"
+                title="Add as standard task (5d)"
+              >
+                + Task
+              </button>
+              <button
+                type="button"
+                onClick={() => handleQuickAdd("milestone")}
+                className="px-2 py-0.5 text-[11px] rounded bg-white border border-purple-200 text-purple-700 hover:bg-purple-50 font-medium transition-colors cursor-pointer"
+                title="Add as milestone (0d)"
+              >
+                + Milestone
+              </button>
+              <button
+                type="button"
+                onClick={() => handleQuickAdd("summary")}
+                className="px-2 py-0.5 text-[11px] rounded bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 font-medium transition-colors cursor-pointer"
+                title="Add as summary phase"
+              >
+                + Phase
+              </button>
+              <button
+                type="button"
+                onClick={() => openAddTask()}
+                className="px-2 py-0.5 text-[11px] rounded bg-blue-600 text-white hover:bg-blue-700 font-medium shadow-2xs transition-colors cursor-pointer"
+                title="Open detailed task form"
+              >
+                Form...
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -20,6 +20,24 @@ import {
   GitCompare,
   Clock,
   FileText,
+  Undo2,
+  Redo2,
+  Indent,
+  Outdent,
+  CheckCircle2,
+  Loader2,
+  AlertTriangle,
+  ShieldAlert,
+  Users,
+  Copy,
+  Hash,
+  AlertCircle,
+  History,
+  Lock,
+  Briefcase,
+  Library,
+  Send,
+  GitBranch,
 } from "lucide-react";
 import { useProgramme } from "@/lib/programme-context";
 import type { ViewMode, ZoomLevel } from "@/lib/programme-types";
@@ -31,6 +49,7 @@ const VIEWS: { id: ViewMode; label: string; icon: React.ComponentType<{ classNam
   { id: "list", label: "List", icon: List },
   { id: "calendar", label: "Calendar", icon: Calendar },
   { id: "reports", label: "Reports", icon: FileText },
+  { id: "portfolio", label: "Portfolio", icon: Briefcase },
 ];
 
 const ZOOM_LEVELS: { id: ZoomLevel; label: string }[] = [
@@ -38,6 +57,7 @@ const ZOOM_LEVELS: { id: ZoomLevel; label: string }[] = [
   { id: "week", label: "Week" },
   { id: "month", label: "Month" },
   { id: "quarter", label: "Quarter" },
+  { id: "year", label: "Year" },
 ];
 
 export function ProgrammeToolbar() {
@@ -58,6 +78,33 @@ export function ProgrammeToolbar() {
     setShowBaselineComparison,
     selectedBaselineVersion,
     setSelectedBaselineVersion,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    indentTask,
+    outdentTask,
+    saveStatus,
+    programmeVersion,
+    saveError,
+    retrySave,
+    conflictDetails,
+    openRollbackModal,
+    schedulingWarnings,
+    selectedTaskIds,
+    clearTaskSelection,
+    bulkShiftTasks,
+    openHealthModal,
+    openResourceLevelingModal,
+    openAddTask,
+    openBulkEdit,
+    duplicateTaskGroup,
+    renumberWBS,
+    setBaseline0,
+    openWBSLibrary,
+    openCreateScenario,
+    openPublishModal,
+    activeScenario,
   } = useProgramme();
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [baselineMenuOpen, setBaselineMenuOpen] = useState(false);
@@ -84,36 +131,280 @@ export function ProgrammeToolbar() {
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 mb-3.5 select-none">
-      {/* Left: View Switcher (Strict 36px height) */}
-      <div className="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white p-0.5">
-        {VIEWS.map((v) => {
-          const Icon = v.icon;
-          const isActive = state.activeView === v.id;
-          return (
-            <button
-              key={v.id}
-              onClick={() => setActiveView(v.id)}
-              className={`flex h-8 items-center gap-1.5 rounded px-3 text-[13px] font-medium transition-colors ${
-                isActive
-                  ? "bg-blue-600 text-white font-semibold"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              <span>{v.label}</span>
-            </button>
-          );
-        })}
+      {/* Left: View Switcher, History, Hierarchy & Save State (Strict 36px height) */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white p-0.5 shadow-2xs">
+          {VIEWS.map((v) => {
+            const Icon = v.icon;
+            const isActive = state.activeView === v.id;
+            return (
+              <button
+                key={v.id}
+                onClick={() => setActiveView(v.id)}
+                className={`flex h-8 items-center gap-1.5 rounded px-3 text-[13px] font-medium transition-colors ${
+                  isActive
+                    ? "bg-blue-600 text-white font-semibold"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                <span>{v.label}</span>
+              </button>
+            );
+          })}
+          <button
+            onClick={() => setActiveView("3d")}
+            className={`flex h-8 items-center gap-1.5 rounded px-3 text-[13px] font-medium transition-colors ${
+              state.activeView === "3d"
+                ? "bg-blue-600 text-white font-semibold"
+                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            }`}
+          >
+            <Box className="h-4 w-4" />
+            <span>3D Model</span>
+          </button>
+        </div>
+
+        {/* Undo / Redo */}
+        <div className="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white p-0.5 shadow-2xs">
+          <button
+            type="button"
+            onClick={undo}
+            disabled={!canUndo}
+            className="flex h-8 w-8 items-center justify-center rounded text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            title="Undo schedule change (Ctrl+Z)"
+          >
+            <Undo2 className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={redo}
+            disabled={!canRedo}
+            className="flex h-8 w-8 items-center justify-center rounded text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            title="Redo schedule change (Ctrl+Y)"
+          >
+            <Redo2 className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Indent / Outdent */}
+        <div className="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white p-0.5 shadow-2xs">
+          <button
+            type="button"
+            onClick={() => state.selectedTaskId && outdentTask(state.selectedTaskId)}
+            disabled={!state.selectedTaskId}
+            className="flex h-8 w-8 items-center justify-center rounded text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            title="Outdent task hierarchy (Shift+Tab)"
+          >
+            <Outdent className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => state.selectedTaskId && indentTask(state.selectedTaskId)}
+            disabled={!state.selectedTaskId}
+            className="flex h-8 w-8 items-center justify-center rounded text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            title="Indent task hierarchy (Tab)"
+          >
+            <Indent className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* WBS Group Clone & Renumbering */}
+        <div className="hidden xl:inline-flex h-9 items-center rounded-md border border-slate-200 bg-white p-0.5 shadow-2xs">
+          <button
+            type="button"
+            onClick={() => state.selectedTaskId && duplicateTaskGroup(state.selectedTaskId)}
+            disabled={!state.selectedTaskId}
+            className="flex h-8 px-2 items-center gap-1 rounded text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30 disabled:pointer-events-none transition-colors text-[11.5px] font-medium"
+            title="Duplicate selected task group with remapped internal dependencies"
+          >
+            <Copy className="h-3.5 w-3.5" />
+            <span>Clone</span>
+          </button>
+          <div className="h-3.5 w-px bg-slate-200 mx-0.5" />
+          <button
+            type="button"
+            onClick={() => renumberWBS()}
+            className="flex h-8 px-2 items-center gap-1 rounded text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors text-[11.5px] font-medium"
+            title="Renumber WBS outline codes preserving stable task IDs"
+          >
+            <Hash className="h-3.5 w-3.5" />
+            <span>Renumber</span>
+          </button>
+        </div>
+
+        {/* Multi-State Save & Concurrency Indicator */}
+        <div className="hidden lg:inline-flex h-9 items-center gap-1.5 px-2.5 rounded-md border border-slate-200 bg-white text-[12px] font-medium shadow-2xs transition-colors">
+          {saveStatus === "saving" ? (
+            <div className="flex items-center gap-1.5 text-blue-700">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />
+              <span>Saving...</span>
+            </div>
+          ) : saveStatus === "failed" ? (
+            <div className="flex items-center gap-1.5 text-rose-700">
+              <AlertCircle className="h-3.5 w-3.5 text-rose-600" />
+              <span>Save Failed</span>
+              <button
+                type="button"
+                onClick={retrySave}
+                className="ml-1 underline font-bold text-rose-800 hover:text-rose-950 cursor-pointer"
+                title={saveError?.message || "Click to retry saving schedule"}
+              >
+                Retry
+              </button>
+            </div>
+          ) : saveStatus === "conflict" ? (
+            <div className="flex items-center gap-1.5 text-amber-800">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+              <span>Conflict (v{conflictDetails?.currentVersion || "?"})</span>
+            </div>
+          ) : saveStatus === "unsaved" ? (
+            <div className="flex items-center gap-1.5 text-slate-500">
+              <Clock className="h-3.5 w-3.5 text-slate-400" />
+              <span>Unsaved</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-slate-700">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+              <span>Saved (v{programmeVersion})</span>
+            </div>
+          )}
+        </div>
+
+        {/* History & Rollback Button */}
         <button
-          onClick={() => setActiveView("3d")}
-          className={`flex h-8 items-center gap-1.5 rounded px-3 text-[13px] font-medium transition-colors ${
-            state.activeView === "3d"
-              ? "bg-blue-600 text-white font-semibold"
-              : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-          }`}
+          type="button"
+          onClick={openRollbackModal}
+          className="inline-flex h-9 items-center gap-1.5 px-2.5 rounded-md border border-slate-200 bg-white text-[12px] font-medium text-slate-700 shadow-2xs hover:bg-slate-50 transition-colors cursor-pointer"
+          title="Inspect schedule revision history or execute controlled rollback"
         >
-          <Box className="h-4 w-4" />
-          <span>3D Model</span>
+          <History className="h-3.5 w-3.5 text-slate-500" />
+          <span>v{programmeVersion}</span>
+        </button>
+
+        {/* Schedule Health & Quality (DCMA 14-Point) */}
+        <button
+          type="button"
+          onClick={openHealthModal}
+          className={`inline-flex h-9 items-center gap-1.5 px-2.5 rounded-md border text-[12px] font-medium shadow-2xs transition-colors cursor-pointer ${
+            schedulingWarnings && schedulingWarnings.length > 0
+              ? "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"
+              : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+          }`}
+          title="Inspect Schedule Quality, DCMA 14-Point Risk Analysis & Logic Health"
+        >
+          {schedulingWarnings && schedulingWarnings.length > 0 ? (
+            <>
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+              <span>{schedulingWarnings.length} alert{schedulingWarnings.length > 1 ? "s" : ""}</span>
+            </>
+          ) : (
+            <>
+              <ShieldAlert className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+              <span>Health</span>
+            </>
+          )}
+        </button>
+
+        {/* Resource Workload & Leveling */}
+        <button
+          type="button"
+          onClick={openResourceLevelingModal}
+          className="inline-flex h-9 items-center gap-1.5 px-2.5 rounded-md border border-slate-200 bg-white text-[12px] font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
+          title="Resource workload by day/week/month, rate cards & non-destructive levelling simulation"
+        >
+          <Users className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+          <span className="hidden sm:inline">Resources</span>
+        </button>
+
+        {/* Multi-selection pill */}
+        {selectedTaskIds && selectedTaskIds.length > 0 && (
+          <div className="inline-flex h-9 items-center gap-2 px-2.5 rounded-md border border-blue-200 bg-blue-50 text-[12px] font-medium text-blue-800 shadow-2xs animate-in fade-in">
+            <span className="font-semibold">{selectedTaskIds.length} selected</span>
+            <div className="h-3 w-px bg-blue-200" />
+            <button
+              type="button"
+              onClick={openBulkEdit}
+              className="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-[11px] shadow-2xs transition-colors"
+              title="Bulk edit properties of all selected tasks"
+            >
+              Bulk Edit...
+            </button>
+            <button
+              type="button"
+              onClick={() => bulkShiftTasks(selectedTaskIds, 1)}
+              className="px-1.5 py-0.5 rounded bg-white border border-blue-200 text-blue-700 hover:bg-blue-100 text-[11px]"
+              title="Shift selected tasks forward by 1 working day"
+            >
+              +1d
+            </button>
+            <button
+              type="button"
+              onClick={() => bulkShiftTasks(selectedTaskIds, -1)}
+              className="px-1.5 py-0.5 rounded bg-white border border-blue-200 text-blue-700 hover:bg-blue-100 text-[11px]"
+              title="Shift selected tasks earlier by 1 working day"
+            >
+              -1d
+            </button>
+            <button
+              type="button"
+              onClick={clearTaskSelection}
+              className="text-blue-600 hover:text-blue-900 underline text-[11px] ml-1"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
+        {/* WBS Work Package Snippet Library */}
+        <button
+          type="button"
+          id="wbs-library-btn"
+          onClick={() => openWBSLibrary()}
+          className="inline-flex h-9 items-center gap-1.5 px-2.5 rounded-md border border-slate-200 bg-white text-[12px] font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
+          title="Browse & insert standardized construction WBS work packages"
+        >
+          <Library className="h-3.5 w-3.5 text-blue-600" />
+          <span className="hidden sm:inline">WBS Library</span>
+        </button>
+
+        {/* What-If Scenarios Sandbox */}
+        <button
+          type="button"
+          id="scenarios-btn"
+          onClick={openCreateScenario}
+          className={`inline-flex h-9 items-center gap-1.5 px-2.5 rounded-md border text-[12px] font-medium transition-colors shadow-2xs cursor-pointer ${
+            activeScenario
+              ? "border-amber-400 bg-amber-50 text-amber-900 font-bold"
+              : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+          }`}
+          title="Create or test alternative What-If schedule branch without affecting live programme"
+        >
+          <GitBranch className="h-3.5 w-3.5 text-purple-600" />
+          <span className="hidden sm:inline">{activeScenario ? "In Scenario" : "What-If"}</span>
+        </button>
+
+        {/* Controlled Programme Publishing */}
+        <button
+          type="button"
+          id="publish-btn"
+          onClick={openPublishModal}
+          className="inline-flex h-9 items-center gap-1.5 px-2.5 rounded-md border border-slate-200 bg-white text-[12px] font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
+          title="Generate controlled programme issue transmittal & freeze client revision"
+        >
+          <Send className="h-3.5 w-3.5 text-indigo-600" />
+          <span className="hidden sm:inline">Publish</span>
+        </button>
+
+        {/* Global Add Item Button */}
+        <button
+          type="button"
+          onClick={() => openAddTask()}
+          className="inline-flex h-9 items-center gap-1.5 px-3 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-[12px] font-semibold shadow-2xs transition-colors cursor-pointer"
+          title="Create standard task, milestone or summary group"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          <span>Add Item</span>
         </button>
       </div>
 
@@ -589,8 +880,18 @@ export function ProgrammeToolbar() {
 
                 <div className="space-y-1">
                   {[
-                    { id: "ver-b0", name: "Baseline 0 (Contract)", state: "Locked", count: "17 tasks" },
-                    { id: "ver-ab", name: "Approved Baseline 1.1", state: "Approved", count: "24 tasks" },
+                    {
+                      id: "ver-b0",
+                      name: "Baseline 0 (Contract)",
+                      state: "Locked",
+                      count: `${state.tasks.filter((t) => t.baseline0Start).length || state.tasks.length} tasks`,
+                    },
+                    {
+                      id: "ver-ab",
+                      name: "Approved Baseline 1.1",
+                      state: "Approved",
+                      count: `${state.tasks.length} tasks`,
+                    },
                   ].map((base) => (
                     <button
                       key={base.id}
@@ -616,7 +917,23 @@ export function ProgrammeToolbar() {
                   ))}
                 </div>
 
-                <div className="mt-2.5 pt-2 border-t border-slate-100">
+                <div className="mt-2.5 pt-2 border-t border-slate-100 space-y-1.5">
+                  <button
+                    id="freeze-baseline-0-btn"
+                    type="button"
+                    onClick={() => {
+                      setBaseline0("Contractual Baseline 0 established", "Project Planner");
+                      setSelectedBaselineVersion("ver-b0");
+                      setShowBaselineComparison(true);
+                      setBaselineMenuOpen(false);
+                    }}
+                    className="flex w-full items-center justify-center gap-1.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-1.5 text-[11.5px] font-semibold transition-colors cursor-pointer"
+                    title="Freeze current schedule as immutable Baseline 0 (Contract)"
+                  >
+                    <Lock className="h-3.5 w-3.5 text-amber-700" />
+                    <span>Freeze Contract Baseline 0</span>
+                  </button>
+
                   <button
                     onClick={() => {
                       toggleBaselineComparison();

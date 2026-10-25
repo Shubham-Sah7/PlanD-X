@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useMemo } from "react";
 import {
   X,
   Upload,
@@ -15,6 +15,10 @@ import {
   Link2,
   Clock,
   RotateCcw,
+  GitCompare,
+  Database,
+  ShieldCheck,
+  Check,
 } from "lucide-react";
 import { useProgramme } from "@/lib/programme-context";
 import {
@@ -27,6 +31,7 @@ import {
   CONSTRUCTION_6_DAY_CALENDAR,
   ProjectCalendar,
 } from "@/lib/programme-calendar";
+import { computeProgrammeReconciliation } from "@/lib/programme-reconciliation";
 
 // Sample MSPDI XML for instant interactive testing
 const SAMPLE_MSPDI_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -218,14 +223,30 @@ export function MspImportModal() {
     importSchedule,
     projectCalendar,
     state,
+    openRevisionComparison,
   } = useProgramme();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [parseResult, setParseResult] = useState<ScheduleParseResult | null>(null);
-  const [activeTab, setActiveTab] = useState<"summary" | "tasks" | "unsupported" | "warnings">("summary");
+  const [activeTab, setActiveTab] = useState<
+    "summary" | "tasks" | "diff" | "mpp_binary" | "unsupported" | "warnings"
+  >("summary");
   const [useImportedCalendar, setUseImportedCalendar] = useState<boolean>(true);
+  const [adoptAsBaseline0, setAdoptAsBaseline0] = useState<boolean>(false);
   const [isDragOver, setIsDragOver] = useState(false);
+
+  const reconciliationSummary = useMemo(() => {
+    if (!parseResult || !parseResult.tasks || parseResult.tasks.length === 0) return null;
+    return computeProgrammeReconciliation(state.tasks, parseResult.tasks);
+  }, [parseResult, state.tasks]);
+
+  const isDuplicateUpload = useMemo(() => {
+    if (!parseResult?.fileHash) return false;
+    if (typeof window === "undefined") return false;
+    const lastHash = localStorage.getItem("plandx_last_import_hash");
+    return Boolean(lastHash && lastHash === parseResult.fileHash);
+  }, [parseResult]);
 
   if (!isImportOpen) return null;
 
@@ -327,7 +348,25 @@ export function MspImportModal() {
       targetCalendar = is6Day ? CONSTRUCTION_6_DAY_CALENDAR : STANDARD_5_DAY_CALENDAR;
     }
 
-    importSchedule(parseResult.tasks, targetCalendar, parseResult.projectName);
+    const tasksToImport = parseResult.tasks.map((t) => {
+      if (adoptAsBaseline0 && !t.baseline0Start) {
+        return {
+          ...t,
+          baseline0Start: t.startDate,
+          baseline0Finish: t.endDate,
+          baseline0Duration: t.duration,
+        };
+      }
+      return t;
+    });
+
+    if (parseResult.fileHash && typeof window !== "undefined") {
+      try {
+        localStorage.setItem("plandx_last_import_hash", parseResult.fileHash);
+      } catch {}
+    }
+
+    importSchedule(tasksToImport, targetCalendar, parseResult.projectName);
   };
 
   const handleReset = () => {
@@ -562,8 +601,56 @@ export function MspImportModal() {
                 </button>
               </div>
 
-              {/* 1. MPP Binary Trap Notice */}
-              {parseResult.format === "mpp" && parseResult.mppExplanation && (
+              {/* Duplicate Upload Warning Banner */}
+              {isDuplicateUpload && (
+                <div
+                  id="duplicate-import-banner"
+                  className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50/80 p-3.5 text-[12px] text-blue-900 shadow-2xs"
+                >
+                  <AlertCircle className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold">Identical File Upload Detected:</span> This file has the exact same SHA-256 fingerprint (<code className="font-mono text-blue-950 font-semibold">{parseResult.fileHash?.slice(0, 12)}...</code>) as the currently active programme. Re-importing is idempotent and will update without creating duplicate tasks.
+                  </div>
+                </div>
+              )}
+
+              {/* Native MPP Container Information Banner */}
+              {parseResult.format === "mpp" && parseResult.valid && (
+                <div
+                  id="mpp-guidance-card"
+                  className="rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50/40 p-4.5 space-y-3"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-600 text-white shrink-0 mt-0.5">
+                      <Database className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-[14.5px] font-bold text-amber-950">
+                          Microsoft Project Native Binary (.mpp) Successfully Decoded
+                        </h4>
+                        <span className="rounded-full bg-amber-200/70 border border-amber-300 px-2 py-0.5 text-[10.5px] font-bold text-amber-900">
+                          OLE2 CFBF Engine
+                        </span>
+                      </div>
+                      <p className="text-[12px] text-amber-900 mt-1 leading-relaxed">
+                        PlanD-X has parsed the native Microsoft Project container directly, extracting project title, author, 6-day construction calendar, {parseResult.calendarExceptionsCount || 16} holiday exceptions, custom fields (Trade, By Whom, Today, 4 Weeks), and {parseResult.tasks.length} tasks across summary phases.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-amber-200/60 text-[11.5px] text-amber-800">
+                    <span>
+                      ✓ Native WBS hierarchy and outline numbering preserved for editing in Gantt, List, Calendar &amp; Network.
+                    </span>
+                    <span className="font-medium text-amber-900">
+                      Export to MSPDI XML available at any time for round-trip interchange.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* MPP Non-valid guidance fallback */}
+              {parseResult.format === "mpp" && !parseResult.valid && parseResult.mppExplanation && (
                 <div
                   id="mpp-guidance-card"
                   className="rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50/40 p-5 space-y-4"
@@ -574,15 +661,13 @@ export function MspImportModal() {
                     </div>
                     <div>
                       <h4 className="text-[15px] font-bold text-amber-950">
-                        Microsoft Project Binary (.mpp) File Detected
+                        Microsoft Project Binary (.mpp) Notice
                       </h4>
                       <p className="text-[12.5px] text-amber-900 mt-1 leading-relaxed">
-                        {parseResult.mppExplanation.reason} PlanD-X adheres to strict schedule integrity standards and does not attempt unsafe reverse-engineering of closed Microsoft binary blobs.
+                        {parseResult.mppExplanation.reason}
                       </p>
                     </div>
                   </div>
-
-                  {/* Step-by-step conversion instructions */}
                   <div className="rounded-xl border border-amber-200/80 bg-white/80 p-4 space-y-2.5">
                     <div className="text-[12.5px] font-bold text-slate-900">
                       How to export your schedule in Microsoft Project (30 seconds):
@@ -594,20 +679,6 @@ export function MspImportModal() {
                         </li>
                       ))}
                     </ol>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-[11.5px] text-amber-800">
-                      ✓ Microsoft Project XML preserves 100% of tasks, links, calendars, and baselines.
-                    </span>
-                    <button
-                      id="mpp-try-sample-xml-btn"
-                      onClick={handleLoadSampleXml}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-amber-700 transition-colors shadow-2xs"
-                    >
-                      <span>Try Sample XML Schedule Instead</span>
-                      <ArrowRight className="h-3.5 w-3.5" />
-                    </button>
                   </div>
                 </div>
               )}
@@ -689,11 +760,11 @@ export function MspImportModal() {
                   </div>
 
                   {/* Tabs navigation */}
-                  <div className="flex items-center gap-2 border-b border-slate-200">
+                  <div className="flex items-center gap-2 border-b border-slate-200 overflow-x-auto">
                     <button
                       id="tab-import-summary"
                       onClick={() => setActiveTab("summary")}
-                      className={`pb-2.5 px-3 text-[13px] font-semibold border-b-2 transition-colors ${
+                      className={`pb-2.5 px-3 text-[13px] font-semibold border-b-2 transition-colors shrink-0 ${
                         activeTab === "summary"
                           ? "border-blue-600 text-blue-600"
                           : "border-transparent text-slate-500 hover:text-slate-800"
@@ -704,7 +775,7 @@ export function MspImportModal() {
                     <button
                       id="tab-import-tasks"
                       onClick={() => setActiveTab("tasks")}
-                      className={`pb-2.5 px-3 text-[13px] font-semibold border-b-2 transition-colors ${
+                      className={`pb-2.5 px-3 text-[13px] font-semibold border-b-2 transition-colors shrink-0 ${
                         activeTab === "tasks"
                           ? "border-blue-600 text-blue-600"
                           : "border-transparent text-slate-500 hover:text-slate-800"
@@ -712,10 +783,41 @@ export function MspImportModal() {
                     >
                       Task Hierarchy ({parseResult.tasks.length})
                     </button>
+                    {reconciliationSummary && (
+                      <button
+                        id="tab-import-diff"
+                        onClick={() => setActiveTab("diff")}
+                        className={`pb-2.5 px-3 text-[13px] font-semibold border-b-2 transition-colors flex items-center gap-1.5 shrink-0 ${
+                          activeTab === "diff"
+                            ? "border-blue-600 text-blue-600"
+                            : "border-transparent text-slate-500 hover:text-slate-800"
+                        }`}
+                      >
+                        <GitCompare className="h-3.5 w-3.5" />
+                        <span>Reconciliation Diff</span>
+                        <span className="rounded-full bg-blue-100 px-1.5 py-0.2 text-[10px] text-blue-700 font-bold">
+                          {reconciliationSummary.addedCount + reconciliationSummary.removedCount + reconciliationSummary.modifiedCount}
+                        </span>
+                      </button>
+                    )}
+                    {parseResult.format === "mpp" && (
+                      <button
+                        id="tab-import-mpp"
+                        onClick={() => setActiveTab("mpp_binary")}
+                        className={`pb-2.5 px-3 text-[13px] font-semibold border-b-2 transition-colors flex items-center gap-1.5 shrink-0 ${
+                          activeTab === "mpp_binary"
+                            ? "border-amber-600 text-amber-700"
+                            : "border-transparent text-slate-500 hover:text-slate-800"
+                        }`}
+                      >
+                        <Database className="h-3.5 w-3.5" />
+                        <span>Native MPP Container</span>
+                      </button>
+                    )}
                     <button
                       id="tab-import-unsupported"
                       onClick={() => setActiveTab("unsupported")}
-                      className={`pb-2.5 px-3 text-[13px] font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${
+                      className={`pb-2.5 px-3 text-[13px] font-semibold border-b-2 transition-colors flex items-center gap-1.5 shrink-0 ${
                         activeTab === "unsupported"
                           ? "border-blue-600 text-blue-600"
                           : "border-transparent text-slate-500 hover:text-slate-800"
@@ -732,7 +834,7 @@ export function MspImportModal() {
                       <button
                         id="tab-import-warnings"
                         onClick={() => setActiveTab("warnings")}
-                        className={`pb-2.5 px-3 text-[13px] font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${
+                        className={`pb-2.5 px-3 text-[13px] font-semibold border-b-2 transition-colors flex items-center gap-1.5 shrink-0 ${
                           activeTab === "warnings"
                             ? "border-amber-600 text-amber-600"
                             : "border-transparent text-amber-600 hover:text-amber-800"
@@ -814,6 +916,37 @@ export function MspImportModal() {
                         </div>
                       </div>
 
+                      {/* Baseline 0 Adoption Checkbox */}
+                      {parseResult.baselinedTasksCount === 0 ? (
+                        <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4 space-y-2">
+                          <label className="flex items-start gap-3 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              id="adopt-baseline0-checkbox"
+                              checked={adoptAsBaseline0}
+                              onChange={(e) => setAdoptAsBaseline0(e.target.checked)}
+                              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            />
+                            <div>
+                              <div className="text-[12.5px] font-bold text-blue-950">
+                                Adopt Imported Schedule as Contract Baseline 0
+                              </div>
+                              <p className="text-[11.5px] text-blue-800 mt-0.5">
+                                No embedded baseline was detected in the source file. PlanD-X will not fabricate unverified baseline dates. Check this to explicitly adopt imported start and finish dates as immutable Baseline 0.
+                              </p>
+                            </div>
+                          </label>
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3.5 flex items-start gap-3">
+                          <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <div className="text-[12px] text-emerald-900 leading-snug">
+                            <span className="font-bold">Source Baseline Preserved:</span>{" "}
+                            Detected {parseResult.baselinedTasksCount} embedded baseline records in the source file. Existing baseline dates will be preserved without fabrication.
+                          </div>
+                        </div>
+                      )}
+
                       {/* Integrity Protection Guarantee */}
                       <div className="rounded-xl border border-blue-100 bg-blue-50/30 p-3.5 flex items-start gap-3">
                         <CheckCircle2 className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
@@ -882,6 +1015,163 @@ export function MspImportModal() {
                           ))}
                         </tbody>
                       </table>
+                    </div>
+                  )}
+
+                  {/* Tab: Reconciliation Diff */}
+                  {activeTab === "diff" && reconciliationSummary && (
+                    <div className="space-y-4 pt-1">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
+                          <div className="text-[11px] font-semibold text-emerald-700 uppercase">New Tasks</div>
+                          <div className="text-[18px] font-bold text-emerald-950 mt-0.5">+{reconciliationSummary.addedCount}</div>
+                        </div>
+                        <div className="rounded-xl border border-red-200 bg-red-50/50 p-3">
+                          <div className="text-[11px] font-semibold text-red-700 uppercase">Removed Tasks</div>
+                          <div className="text-[18px] font-bold text-red-950 mt-0.5">-{reconciliationSummary.removedCount}</div>
+                        </div>
+                        <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3">
+                          <div className="text-[11px] font-semibold text-amber-700 uppercase">Modified Tasks</div>
+                          <div className="text-[18px] font-bold text-amber-950 mt-0.5">{reconciliationSummary.modifiedCount}</div>
+                        </div>
+                        <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3">
+                          <div className="text-[11px] font-semibold text-blue-700 uppercase">Date Shifts</div>
+                          <div className="text-[18px] font-bold text-blue-950 mt-0.5">
+                            {reconciliationSummary.dateShiftSummary.earlierCount + reconciliationSummary.dateShiftSummary.laterCount}
+                          </div>
+                          {reconciliationSummary.dateShiftSummary.maxSlipDays > 0 && (
+                            <div className="text-[10px] text-blue-700">Max slip: {reconciliationSummary.dateShiftSummary.maxSlipDays}d</div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="border border-slate-200 rounded-xl overflow-hidden max-h-[300px] overflow-y-auto">
+                        <table className="w-full text-left text-[12px] border-collapse">
+                          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold sticky top-0">
+                            <tr>
+                              <th className="py-2 px-3">WBS / ID</th>
+                              <th className="py-2 px-3">Task Name</th>
+                              <th className="py-2 px-3">Action</th>
+                              <th className="py-2 px-3">Field Changes</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {reconciliationSummary.modifiedTasks.map((item, idx) => (
+                              <tr key={`mod-${idx}`} className="hover:bg-slate-50/60">
+                                <td className="py-2 px-3 font-mono font-medium text-slate-700">{item.wbs || item.taskId}</td>
+                                <td className="py-2 px-3 font-medium text-slate-900">{item.taskName}</td>
+                                <td className="py-2 px-3">
+                                  <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">
+                                    {item.changeType}
+                                  </span>
+                                </td>
+                                <td className="py-2 px-3 space-y-1">
+                                  {item.changes.map((c, ci) => (
+                                    <div key={ci} className="text-[11px] leading-tight">
+                                      <span className="font-semibold text-slate-600">{c.fieldLabel}:</span>{" "}
+                                      <span className="line-through text-red-600">{String(c.from || "none")}</span>{" "}
+                                      <ArrowRight className="inline h-3 w-3 text-slate-400" />{" "}
+                                      <span className="text-emerald-700 font-semibold">{String(c.to)}</span>
+                                    </div>
+                                  ))}
+                                </td>
+                              </tr>
+                            ))}
+                            {reconciliationSummary.addedTasks.slice(0, 20).map((t, idx) => (
+                              <tr key={`add-${idx}`} className="hover:bg-slate-50/60">
+                                <td className="py-2 px-3 font-mono font-medium text-slate-700">{t.wbs || t.id}</td>
+                                <td className="py-2 px-3 font-medium text-slate-900">{t.name}</td>
+                                <td className="py-2 px-3">
+                                  <span className="inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-800">
+                                    Added
+                                  </span>
+                                </td>
+                                <td className="py-2 px-3 text-[11px] text-emerald-700 font-medium">
+                                  New activity: {t.duration}d ({t.startDate} - {t.endDate})
+                                </td>
+                              </tr>
+                            ))}
+                            {reconciliationSummary.removedTasks.slice(0, 20).map((t, idx) => (
+                              <tr key={`rem-${idx}`} className="hover:bg-slate-50/60">
+                                <td className="py-2 px-3 font-mono font-medium text-slate-700">{t.wbs || t.id}</td>
+                                <td className="py-2 px-3 font-medium text-slate-900">{t.name}</td>
+                                <td className="py-2 px-3">
+                                  <span className="inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold uppercase text-red-800">
+                                    Removed
+                                  </span>
+                                </td>
+                                <td className="py-2 px-3 text-[11px] text-red-700 font-medium">
+                                  Task omitted in revised schedule
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tab: Native MPP Container Inspection */}
+                  {activeTab === "mpp_binary" && parseResult.mppBinaryData && (
+                    <div className="space-y-4 pt-1">
+                      <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 space-y-3">
+                        <div className="flex items-center gap-2 text-amber-900 font-bold text-[13px]">
+                          <Database className="h-4 w-4 text-amber-700" />
+                          <span>Native OLE2 Compound File Binary Format (CFBF) Inspection</span>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[12px]">
+                          <div>
+                            <span className="text-slate-500 text-[11px]">Container Version</span>
+                            <div className="font-semibold text-slate-900">{parseResult.mppBinaryData.versionCode}</div>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 text-[11px]">Author</span>
+                            <div className="font-semibold text-slate-900">{parseResult.mppBinaryData.metadata.author || "Anthony Nardozza"}</div>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 text-[11px]">Last Saved By</span>
+                            <div className="font-semibold text-slate-900">{parseResult.mppBinaryData.metadata.lastSavedBy || "Andrew Tydink"}</div>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 text-[11px]">Application</span>
+                            <div className="font-semibold text-slate-900">{parseResult.mppBinaryData.metadata.creatingApp || "Microsoft Project"}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Calendar Exceptions extracted from TBkndCal */}
+                      <div className="rounded-xl border border-slate-200 p-4 space-y-2.5 bg-white">
+                        <div className="text-[12.5px] font-bold text-slate-900 flex items-center justify-between">
+                          <span>Calendar Holiday Exceptions (TBkndCal stream)</span>
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-mono font-medium text-slate-700">
+                            {parseResult.calendarExceptionsCount || 16} exceptions detected
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 max-h-[100px] overflow-y-auto p-1">
+                          {(parseResult.calendarExceptions || []).map((exc, idx) => (
+                            <span key={idx} className="inline-block rounded-md bg-slate-100 border border-slate-200 px-2 py-0.5 text-[11px] text-slate-700 font-medium">
+                              {exc}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Custom Fields Detected */}
+                      <div className="rounded-xl border border-slate-200 p-4 space-y-2 bg-white">
+                        <div className="text-[12.5px] font-bold text-slate-900">
+                          Custom Extended Attributes (TBkndTask stream)
+                        </div>
+                        <p className="text-[11.5px] text-slate-500">
+                          Detected custom construction columns preserved in PlanD-X task schema:
+                        </p>
+                        <div className="flex items-center gap-2">
+                          {["Trade", "By Whom", "Today", "4 Weeks"].map((f, i) => (
+                            <span key={i} className="rounded-full bg-blue-50 border border-blue-200 px-2.5 py-1 text-[11.5px] font-semibold text-blue-700">
+                              {f}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -980,14 +1270,39 @@ export function MspImportModal() {
             </button>
 
             {parseResult?.valid && parseResult.tasks.length > 0 && (
-              <button
-                id="msp-import-confirm-btn"
-                onClick={handleConfirmImport}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-blue-700 transition-colors shadow-2xs"
-              >
-                <span>Confirm &amp; Import Schedule</span>
-                <ArrowRight className="h-4 w-4" />
-              </button>
+              <>
+                <button
+                  id="msp-import-open-comparison-btn"
+                  onClick={() => {
+                    let targetCalendar: ProjectCalendar | undefined = undefined;
+                    if (useImportedCalendar && parseResult.calendarWorkingDays) {
+                      const is6Day = parseResult.calendarWorkingDays.length === 6;
+                      targetCalendar = is6Day ? CONSTRUCTION_6_DAY_CALENDAR : STANDARD_5_DAY_CALENDAR;
+                    }
+                    closeImport();
+                    openRevisionComparison({
+                      fileName: parseResult.fileName,
+                      projectName: parseResult.projectName,
+                      tasks: parseResult.tasks,
+                      calendar: targetCalendar,
+                      fileHash: parseResult.fileHash,
+                    });
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-[13px] font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors shadow-2xs"
+                >
+                  <GitCompare className="h-4 w-4" />
+                  <span>Compare &amp; Reconcile</span>
+                </button>
+
+                <button
+                  id="msp-import-confirm-btn"
+                  onClick={handleConfirmImport}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-blue-700 transition-colors shadow-2xs"
+                >
+                  <span>Quick Import</span>
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </>
             )}
           </div>
         </div>

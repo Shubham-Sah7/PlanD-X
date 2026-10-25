@@ -2160,37 +2160,95 @@ export function getVisibleTasks(
     }
   }
 
+  // Pre-build index maps for O(1) lookups
+  const taskById = new Map<string, ProgrammeTask>();
+  const childrenByParent = new Map<string | null, ProgrammeTask[]>();
+
+  for (let i = 0; i < tasks.length; i++) {
+    const t = tasks[i];
+    taskById.set(t.id, t);
+    const pId = t.parentId ?? null;
+    let list = childrenByParent.get(pId);
+    if (!list) {
+      list = [];
+      childrenByParent.set(pId, list);
+    }
+    list.push(t);
+  }
+
+  const effectiveExpanded = new Set(expandedNodes);
+  let visibleTasksSet = new Set<string>(tasks.map((t) => t.id));
+
   if (searchQuery && searchQuery.trim()) {
-    const q = searchQuery.toLowerCase();
-    tasks = tasks.filter(
-      (t) =>
+    const q = searchQuery.toLowerCase().trim();
+    const matchedIds = new Set<string>();
+
+    for (let i = 0; i < tasks.length; i++) {
+      const t = tasks[i];
+      if (
         t.name.toLowerCase().includes(q) ||
         t.id.toLowerCase().includes(q) ||
         t.wbs.toLowerCase().includes(q) ||
-        (t.assignee && t.assignee.toLowerCase().includes(q))
-    );
+        (t.trade && t.trade.toLowerCase().includes(q)) ||
+        (t.tradeText && t.tradeText.toLowerCase().includes(q)) ||
+        (t.assignee && t.assignee.toLowerCase().includes(q)) ||
+        (t.byWhom && t.byWhom.toLowerCase().includes(q))
+      ) {
+        matchedIds.add(t.id);
+      }
+    }
+
+    if (matchedIds.size === 0) {
+      return [];
+    }
+
+    // Automatically expand and include ancestors of all matched tasks in O(depth)
+    const activeVisibleSet = new Set<string>(matchedIds);
+    for (const id of matchedIds) {
+      let curr = taskById.get(id);
+      while (curr && curr.parentId) {
+        activeVisibleSet.add(curr.parentId);
+        effectiveExpanded.add(curr.parentId);
+        curr = taskById.get(curr.parentId);
+      }
+    }
+    visibleTasksSet = activeVisibleSet;
   }
 
   const result: ProgrammeTask[] = [];
 
-  function addChildren(parentId: string | null) {
-    const directChildren = tasks.filter((t) => t.parentId === parentId);
-    for (const task of directChildren) {
+  function addChildren(parentId: string) {
+    const directChildren = childrenByParent.get(parentId);
+    if (!directChildren) return;
+    for (let i = 0; i < directChildren.length; i++) {
+      const task = directChildren[i];
+      if (!visibleTasksSet.has(task.id)) continue;
       result.push(task);
-      if (task.children.length > 0 && expandedNodes.has(task.id)) {
+      const hasChildren = (task.children && task.children.length > 0) || childrenByParent.has(task.id);
+      if (hasChildren && effectiveExpanded.has(task.id)) {
         addChildren(task.id);
       }
     }
   }
 
-  const rootTasks = tasks.filter((t) => t.parentId === null);
-  for (const root of rootTasks) {
+  // Identify root tasks in O(N) using taskById
+  const rootTasks: ProgrammeTask[] = [];
+  for (let i = 0; i < tasks.length; i++) {
+    const t = tasks[i];
+    if ((t.parentId === null || !taskById.has(t.parentId)) && visibleTasksSet.has(t.id)) {
+      rootTasks.push(t);
+    }
+  }
+
+  for (let i = 0; i < rootTasks.length; i++) {
+    const root = rootTasks[i];
     result.push(root);
-    if (root.children.length > 0 && expandedNodes.has(root.id)) {
+    const hasChildren = (root.children && root.children.length > 0) || childrenByParent.has(root.id);
+    if (hasChildren && effectiveExpanded.has(root.id)) {
       addChildren(root.id);
     }
   }
 
-  return result.length > 0 ? result : tasks.slice(0, 25);
+  return result;
 }
 

@@ -1,8 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider  = "prisma-client"
   output    = "../lib/generated/prisma"
@@ -13,14 +11,20 @@ datasource db {
   provider = "postgresql"
 }
 
-// Example models - customize these for your application
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
   name      String?
+  role      String   @default("planner")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  posts     Post[]
+
+  projects          Project[]
+  programmesCreated Programme[]     @relation("ProgrammeCreatedBy")
+  programmesEdited  Programme[]     @relation("ProgrammeLastModifiedBy")
+  revisions         ProgrammeRevision[]
+  auditEvents       AuditEvent[]
+  posts             Post[]
 }
 
 model Post {
@@ -34,4 +38,180 @@ model Post {
   updatedAt DateTime @updatedAt
 
   @@index([authorId])
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  clientName  String?
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  programmes  Programme[]
+
+  @@index([ownerId])
+}
+
+model Programme {
+  id               String   @id @default(cuid())
+  projectId        String
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name             String
+  version          Int      @default(1)
+  status           String   @default("active") // "active" | "draft" | "archived"
+  settings         Json?    // UI preferences, view options, default hours
+  calendarData     Json?    // WorkingCalendar JSON definition
+  createdById      String
+  createdBy        User     @relation("ProgrammeCreatedBy", fields: [createdById], references: [id])
+  lastModifiedById String
+  lastModifiedBy   User     @relation("ProgrammeLastModifiedBy", fields: [lastModifiedById], references: [id])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tasks            Task[]
+  dependencies     Dependency[]
+  assignments      ResourceAssignment[]
+  baselines        Baseline[]
+  revisions        ProgrammeRevision[]
+  auditEvents      AuditEvent[]
+  lock             ProgrammeLock?
+
+  @@index([projectId])
+  @@index([version])
+}
+
+model Task {
+  id              String    @id @default(cuid())
+  programmeId     String
+  programme       Programme @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  taskId          String    // Stable task identifier (e.g. "task-102")
+  wbs             String    // WBS outline code (e.g. "1.2.3")
+  name            String
+  startDate       String    // ISO YYYY-MM-DD
+  finishDate      String    // ISO YYYY-MM-DD
+  duration        Float     @default(1)
+  percentComplete Float     @default(0)
+  status          String    @default("not-started") // "not-started" | "in-progress" | "complete"
+  isMilestone     Boolean   @default(false)
+  isCritical      Boolean   @default(false)
+  depth           Int       @default(0)
+  parentId        String?
+  sortOrder       Int       @default(0)
+  notes           String?
+  calendarName    String?
+  constraintType  String?
+  constraintDate  String?
+  deadline        String?
+  totalFloat      Float?
+  freeFloat       Float?
+  actualStart     String?
+  actualFinish    String?
+  version         Int       @default(1)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([programmeId, taskId])
+  @@index([programmeId, wbs])
+  @@index([programmeId, sortOrder])
+}
+
+model Dependency {
+  id          String    @id @default(cuid())
+  programmeId String
+  programme   Programme @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  fromTaskId  String    // Predecessor taskId
+  toTaskId    String    // Successor taskId
+  type        String    @default("FS") // "FS" | "SS" | "FF" | "SF"
+  lag         Float     @default(0)
+  createdAt   DateTime  @default(now())
+
+  @@unique([programmeId, fromTaskId, toTaskId])
+  @@index([programmeId, fromTaskId])
+  @@index([programmeId, toTaskId])
+}
+
+model ResourceAssignment {
+  id           String    @id @default(cuid())
+  programmeId  String
+  programme    Programme @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  taskId       String
+  resourceId   String
+  units        Float     @default(1.0)
+  plannedWork  Float     @default(8.0)
+  actualWork   Float     @default(0.0)
+  rateOverride Float?
+  tradeName    String?
+  subcontractorId String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([programmeId, taskId, resourceId])
+  @@index([programmeId, taskId])
+  @@index([programmeId, resourceId])
+}
+
+model Baseline {
+  id             String    @id @default(cuid())
+  programmeId    String
+  programme      Programme @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  baselineNumber Int       @default(0) // 0 for Baseline 0, 1 for Baseline 1, etc.
+  name           String
+  description    String?
+  createdById    String
+  snapshotData   Json      // Full baseline snapshot JSON (tasks, dates, durations)
+  createdAt      DateTime  @default(now())
+
+  @@unique([programmeId, baselineNumber])
+  @@index([programmeId])
+}
+
+model ProgrammeRevision {
+  id             String    @id @default(cuid())
+  programmeId    String
+  programme      Programme @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  revisionNumber Int
+  name           String
+  sourceFileName String?
+  changeSummary  Json?     // Comparison diff stats and categories
+  authorId       String
+  author         User      @relation(fields: [authorId], references: [id])
+  snapshotData   Json      // Full snapshot of tasks, deps, calendar at revision time
+  createdAt      DateTime  @default(now())
+
+  @@unique([programmeId, revisionNumber])
+  @@index([programmeId, revisionNumber])
+}
+
+model AuditEvent {
+  id          String    @id @default(cuid())
+  programmeId String
+  programme   Programme @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  eventType   String    // "TASK_EDIT" | "IMPORT" | "REVISION_APPLIED" | "ROLLBACK" | "CONFLICT_OVERRIDE"
+  entityType  String    // "TASK" | "DEPENDENCY" | "CALENDAR" | "PROGRAMME"
+  entityId    String?
+  description String
+  details     Json?     // Old vs New values
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  createdAt   DateTime  @default(now())
+
+  @@index([programmeId, createdAt])
+  @@index([programmeId, eventType])
+}
+
+model ProgrammeLock {
+  id          String    @id @default(cuid())
+  programmeId String    @unique
+  programme   Programme @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  userId      String
+  userEmail   String
+  userName    String
+  lockedAt    DateTime  @default(now())
+  expiresAt   DateTime
+
+  @@index([programmeId])
 }

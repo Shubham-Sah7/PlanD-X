@@ -7,6 +7,7 @@ import {
 export type { DependencyType };
 import {
   type ProjectCalendar,
+  STANDARD_5_DAY_CALENDAR,
   recalculateSchedule,
   formatDisplayDate,
   parseIsoDate,
@@ -212,9 +213,9 @@ export function linkTasks(
   tasks: ProgrammeTask[],
   predId: string,
   succId: string,
-  type: DependencyType,
-  lag: number,
-  calendar: ProjectCalendar
+  type: DependencyType = "FS",
+  lag: number = 0,
+  calendar: ProjectCalendar = STANDARD_5_DAY_CALENDAR
 ): { updatedTasks: ProgrammeTask[]; changeCount: number } {
   const predTask = tasks.find((t) => t.id === predId);
   const succTask = tasks.find((t) => t.id === succId);
@@ -302,7 +303,7 @@ export function unlinkTasks(
   tasks: ProgrammeTask[],
   predId: string,
   succId: string,
-  calendar: ProjectCalendar
+  calendar: ProjectCalendar = STANDARD_5_DAY_CALENDAR
 ): { updatedTasks: ProgrammeTask[]; changeCount: number } {
   const updatedTasks = tasks.map((task) => {
     if (task.id === succId) {

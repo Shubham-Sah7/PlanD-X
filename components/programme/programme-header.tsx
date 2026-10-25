@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   ChevronDown,
   Upload,
@@ -16,6 +16,7 @@ import {
   Plus,
   GitBranch,
   Clock,
+  GitCompare,
 } from "lucide-react";
 import { useProgramme } from "@/lib/programme-context";
 import { BimDigitalTwinHero } from "./bim/bim-digital-twin-hero";
@@ -39,14 +40,40 @@ export function ProgrammeHeader() {
     openImport,
     openExport,
     openRevisions,
+    openRevisionComparison,
     projectCalendar,
     openCalendarModal,
     showBaselineComparison,
     setShowBaselineComparison,
     selectedBaselineVersion,
     setSelectedBaselineVersion,
+    tasks,
+    currentProject,
+    openProjectModal,
   } = useProgramme();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  const dateRangeStr = useMemo(() => {
+    if (!tasks || tasks.length === 0) {
+      return currentProject?.plannedStartDate ? `Starts ${currentProject.plannedStartDate}` : "No dates scheduled";
+    }
+    const dates = tasks
+      .filter((t) => t.startDate && t.endDate)
+      .map((t) => ({ start: t.startDate, end: t.endDate }));
+    if (dates.length === 0) return currentProject?.plannedStartDate || "No dates scheduled";
+    dates.sort((a, b) => a.start.localeCompare(b.start));
+    const minStart = dates[0].start;
+    dates.sort((a, b) => b.end.localeCompare(a.end));
+    const maxEnd = dates[0].end;
+    return `${minStart} – ${maxEnd}`;
+  }, [tasks, currentProject]);
+
+  const nextMilestone = useMemo(() => {
+    if (!tasks || tasks.length === 0) return null;
+    const ms = tasks.filter((t) => t.isMilestone);
+    if (ms.length === 0) return null;
+    return ms.find((m) => m.status !== "complete") || ms[0];
+  }, [tasks]);
 
   const selectedForecast = showBaselineComparison
     ? selectedBaselineVersion === "ver-ab"
@@ -75,7 +102,7 @@ export function ProgrammeHeader() {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={openAddTask}
+                onClick={() => openAddTask()}
                 className="inline-flex h-9 items-center gap-1.5 rounded-md bg-blue-600 px-3.5 text-[13px] font-medium text-white hover:bg-blue-700 transition-colors"
               >
                 <Plus className="h-4 w-4" />
@@ -102,19 +129,32 @@ export function ProgrammeHeader() {
 
           {/* Location & Programme Metadata (Clean Typography Hierarchy) */}
           <div className="flex flex-wrap items-center gap-2 mt-2 text-[12px] text-slate-500 font-normal">
-            <span className="inline-flex items-center gap-1.5 text-slate-800 font-medium">
-              <Building2 className="h-3.5 w-3.5 text-slate-400" />
-              <span>Building 2 &amp; Unit 80</span>
-            </span>
+            <button
+              id="header-project-selector-btn"
+              onClick={openProjectModal}
+              className="inline-flex items-center gap-1.5 text-slate-800 font-semibold hover:text-blue-600 transition-colors cursor-pointer group"
+              title="Click to switch projects or manage programmes"
+            >
+              <Building2 className="h-3.5 w-3.5 text-blue-600 group-hover:scale-110 transition-transform" />
+              <span>{currentProject?.name || "Battersea Commercial Redevelopment"}</span>
+              <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                {currentProject?.code || "BAT-COMM-2026"}
+              </span>
+              {currentProject?.isDemo && (
+                <span className="rounded bg-amber-100 border border-amber-300 px-1.5 py-0.2 text-[9.5px] font-bold text-amber-800 uppercase tracking-wide">
+                  Demo
+                </span>
+              )}
+            </button>
             <span className="text-slate-300">·</span>
             <span className="inline-flex items-center gap-1 text-slate-600">
               <MapPin className="h-3.5 w-3.5 text-slate-400" />
-              <span>Siliguri, WB</span>
+              <span>{currentProject?.location || "London, UK"}</span>
             </span>
             <span className="text-slate-300">·</span>
             <span className="inline-flex items-center gap-1 text-slate-600 font-mono text-[11.5px]">
               <CalendarIcon className="h-3.5 w-3.5 text-slate-400" />
-              <span>01 Sep 2025 – 15 Nov 2026</span>
+              <span>{dateRangeStr}</span>
             </span>
             <span className="text-slate-300">·</span>
             <button
@@ -129,34 +169,49 @@ export function ProgrammeHeader() {
           </div>
 
           {/* Next Milestone Dedicated Attention Banner */}
-          <div
-            onClick={() => {
-              selectTask("task-columns");
-              openDrawer("task-columns");
-            }}
-            className="flex h-9 items-center justify-between rounded-md border border-amber-200/80 bg-amber-50/50 px-3 hover:border-amber-300 hover:bg-amber-50 transition-colors text-left cursor-pointer mt-2.5"
-            title="Next milestone attention item · Click to inspect in task drawer"
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="h-2 w-2 rotate-45 bg-amber-500 shrink-0" />
-              <span className="text-[11px] font-semibold text-amber-900 uppercase tracking-wider shrink-0">
-                Next Milestone:
-              </span>
-              <span className="text-[13px] font-semibold text-slate-900 truncate">
-                Superstructure L3 Handover
-              </span>
-              <span className="rounded-xs bg-amber-100/80 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 shrink-0">
-                Critical Path
-              </span>
+          {tasks.length === 0 ? (
+            <div
+              onClick={() => openAddTask()}
+              className="flex h-9 items-center justify-between rounded-md border border-blue-200/80 bg-blue-50/50 px-3 hover:border-blue-300 hover:bg-blue-50 transition-colors text-left cursor-pointer mt-2.5"
+              title="Click to add your first phase or activity"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Plus className="h-3.5 w-3.5 text-blue-600" />
+                <span className="text-[12px] font-semibold text-blue-900 truncate">
+                  Blank project initialized · Click to add your first phase or milestone
+                </span>
+              </div>
+              <ChevronRight className="h-3.5 w-3.5 text-blue-600" />
             </div>
-            <div className="flex items-center gap-2 shrink-0 font-mono text-[11px]">
-              <span className="text-slate-500 hidden sm:inline">Target: 16 Apr 2026</span>
-              <span className="rounded-xs bg-blue-600 px-1.5 py-0.5 text-[10.5px] font-semibold text-white">
-                28d left
-              </span>
-              <ChevronRight className="h-3.5 w-3.5 text-amber-600" />
+          ) : nextMilestone ? (
+            <div
+              onClick={() => {
+                selectTask(nextMilestone.id);
+                openDrawer(nextMilestone.id);
+              }}
+              className="flex h-9 items-center justify-between rounded-md border border-amber-200/80 bg-amber-50/50 px-3 hover:border-amber-300 hover:bg-amber-50 transition-colors text-left cursor-pointer mt-2.5"
+              title="Next milestone attention item · Click to inspect in task drawer"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="h-2 w-2 rotate-45 bg-amber-500 shrink-0" />
+                <span className="text-[11px] font-semibold text-amber-900 uppercase tracking-wider shrink-0">
+                  Next Milestone:
+                </span>
+                <span className="text-[13px] font-semibold text-slate-900 truncate">
+                  {nextMilestone.name}
+                </span>
+                {nextMilestone.isCritical && (
+                  <span className="rounded-xs bg-amber-100/80 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 shrink-0">
+                    Critical Path
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 shrink-0 font-mono text-[11px]">
+                <span className="text-slate-500 hidden sm:inline">Target: {nextMilestone.endDate}</span>
+                <ChevronRight className="h-3.5 w-3.5 text-amber-600" />
+              </div>
             </div>
-          </div>
+          ) : null}
 
           {/* 4 Core Construction KPI Metric Cards (Simplified, number-focused, shared height) */}
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 mt-2.5">
@@ -171,11 +226,13 @@ export function ProgrammeHeader() {
               title="Click to reset filter and view all tasks"
             >
               <div className="text-[22px] font-semibold text-slate-900 leading-none font-mono">
-                817
+                {tasks?.length || 0}
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-[12px] font-medium text-slate-500">Total Tasks</span>
-                <span className="text-[11px] text-slate-400 font-mono">60 done</span>
+                <span className="text-[11px] text-slate-400 font-mono">
+                  {tasks?.filter((t) => t.status === "complete").length || 0} done
+                </span>
               </div>
             </div>
 
@@ -191,13 +248,19 @@ export function ProgrammeHeader() {
             >
               <div className="flex items-baseline gap-1.5">
                 <span className="text-[22px] font-semibold text-slate-900 leading-none font-mono">
-                  48%
+                  {tasks && tasks.length > 0
+                    ? `${Math.round(tasks.reduce((acc, t) => acc + (t.progress || 0), 0) / tasks.length)}%`
+                    : "0%"}
                 </span>
-                <span className="text-[11px] font-mono text-slate-400">/ 82% target</span>
+                <span className="text-[11px] font-mono text-slate-400">
+                  {tasks && tasks.length > 0 ? "/ 82% target" : "Planned"}
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-[12px] font-medium text-slate-500">Complete</span>
-                <span className="text-[11px] text-slate-400 font-mono">-34 pts</span>
+                <span className="text-[11px] text-slate-400 font-mono">
+                  {tasks && tasks.length > 0 ? `${tasks.filter((t) => t.status === "in-progress").length} active` : "0 active"}
+                </span>
               </div>
             </div>
 
@@ -212,7 +275,7 @@ export function ProgrammeHeader() {
               title="Click to filter overdue tasks"
             >
               <div className="text-[22px] font-semibold text-slate-900 leading-none font-mono">
-                5
+                {tasks?.filter((t) => t.isOverdue).length || 0}
               </div>
               <div className="flex items-center justify-between w-full">
                 <span className="text-[12px] font-medium text-slate-500">Overdue</span>
@@ -231,7 +294,7 @@ export function ProgrammeHeader() {
               title="Click to filter blocked tasks"
             >
               <div className="text-[22px] font-semibold text-slate-900 leading-none font-mono">
-                3
+                {tasks?.filter((t) => t.isBlocked).length || 0}
               </div>
               <div className="flex items-center justify-between w-full">
                 <span className="text-[12px] font-medium text-slate-500">Blocked</span>
@@ -342,7 +405,7 @@ export function ProgrammeHeader() {
 
         {/* Add Task Button */}
         <button
-          onClick={openAddTask}
+          onClick={() => openAddTask()}
           className="inline-flex items-center gap-1.5 rounded-sm bg-blue-600 px-3 py-1.5 text-[12.5px] font-semibold text-white hover:bg-blue-700 transition-colors"
         >
           <Plus className="h-3.5 w-3.5" />
@@ -378,6 +441,17 @@ export function ProgrammeHeader() {
         >
           <GitBranch className="h-3.5 w-3.5 text-blue-600" />
           <span>Revisions</span>
+        </button>
+
+        {/* Programme Revision Comparison & Reconciliation Button */}
+        <button
+          id="header-compare-revisions-btn"
+          onClick={() => openRevisionComparison()}
+          title="Compare Programme Revisions & Reconcile Changes"
+          className="inline-flex items-center gap-1.5 rounded-sm border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-[12.5px] font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors cursor-pointer shadow-2xs"
+        >
+          <GitCompare className="h-3.5 w-3.5 text-indigo-600" />
+          <span>Compare Revisions</span>
         </button>
       </div>
     </div>

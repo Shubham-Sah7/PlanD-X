@@ -12,14 +12,24 @@ export type ScheduleChangeField =
   | "predecessors"
   | "resource"
   | "baseline"
-  | "name";
+  | "name"
+  | "verifiedPhysicalProgress"
+  | "subcontractorClaimedProgress"
+  | "wbs"
+  | "parentId"
+  | "scenarioApproval"
+  | "programmePublish";
 
 export type ScheduleChangeSource =
   | "user-edit"
   | "cpm-recalculation"
   | "baseline-snapshot"
   | "schedule-import"
-  | "restored-baseline";
+  | "restored-baseline"
+  | "revision-import"
+  | "revision-rollback"
+  | "scenario-merge"
+  | "programme-publish";
 
 export interface ScheduleChangeEvent {
   id: string;

@@ -5,9 +5,16 @@ import { WBSPanel } from "./wbs-panel";
 import { NetworkCanvas } from "./network-canvas";
 import { NetworkFooter } from "./network-footer";
 import { FolderTree, ChevronLeft, ChevronRight } from "lucide-react";
+import { useProgramme } from "@/lib/programme-context";
+import { EmptyProjectState } from "../empty-project-state";
 
 export function NetworkView() {
+  const { state } = useProgramme();
   const [wbsOpen, setWbsOpen] = useState(false);
+
+  if (state.tasks.length === 0) {
+    return <EmptyProjectState />;
+  }
 
   return (
     <div className="flex h-full flex-col rounded-xl border border-slate-200 bg-white overflow-hidden select-none">

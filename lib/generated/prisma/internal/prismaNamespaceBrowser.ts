@@ -52,7 +52,16 @@ export const AnyNull = runtime.AnyNull
 
 export const ModelName = {
   User: 'User',
-  Post: 'Post'
+  Post: 'Post',
+  Project: 'Project',
+  Programme: 'Programme',
+  Task: 'Task',
+  Dependency: 'Dependency',
+  ResourceAssignment: 'ResourceAssignment',
+  Baseline: 'Baseline',
+  ProgrammeRevision: 'ProgrammeRevision',
+  AuditEvent: 'AuditEvent',
+  ProgrammeLock: 'ProgrammeLock'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -75,6 +84,7 @@ export const UserScalarFieldEnum = {
   id: 'id',
   email: 'email',
   name: 'name',
+  role: 'role',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -95,12 +105,179 @@ export const PostScalarFieldEnum = {
 export type PostScalarFieldEnum = (typeof PostScalarFieldEnum)[keyof typeof PostScalarFieldEnum]
 
 
+export const ProjectScalarFieldEnum = {
+  id: 'id',
+  code: 'code',
+  name: 'name',
+  description: 'description',
+  clientName: 'clientName',
+  ownerId: 'ownerId',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type ProjectScalarFieldEnum = (typeof ProjectScalarFieldEnum)[keyof typeof ProjectScalarFieldEnum]
+
+
+export const ProgrammeScalarFieldEnum = {
+  id: 'id',
+  projectId: 'projectId',
+  name: 'name',
+  version: 'version',
+  status: 'status',
+  settings: 'settings',
+  calendarData: 'calendarData',
+  createdById: 'createdById',
+  lastModifiedById: 'lastModifiedById',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type ProgrammeScalarFieldEnum = (typeof ProgrammeScalarFieldEnum)[keyof typeof ProgrammeScalarFieldEnum]
+
+
+export const TaskScalarFieldEnum = {
+  id: 'id',
+  programmeId: 'programmeId',
+  taskId: 'taskId',
+  wbs: 'wbs',
+  name: 'name',
+  startDate: 'startDate',
+  finishDate: 'finishDate',
+  duration: 'duration',
+  percentComplete: 'percentComplete',
+  status: 'status',
+  isMilestone: 'isMilestone',
+  isCritical: 'isCritical',
+  depth: 'depth',
+  parentId: 'parentId',
+  sortOrder: 'sortOrder',
+  notes: 'notes',
+  calendarName: 'calendarName',
+  constraintType: 'constraintType',
+  constraintDate: 'constraintDate',
+  deadline: 'deadline',
+  totalFloat: 'totalFloat',
+  freeFloat: 'freeFloat',
+  actualStart: 'actualStart',
+  actualFinish: 'actualFinish',
+  version: 'version',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type TaskScalarFieldEnum = (typeof TaskScalarFieldEnum)[keyof typeof TaskScalarFieldEnum]
+
+
+export const DependencyScalarFieldEnum = {
+  id: 'id',
+  programmeId: 'programmeId',
+  fromTaskId: 'fromTaskId',
+  toTaskId: 'toTaskId',
+  type: 'type',
+  lag: 'lag',
+  createdAt: 'createdAt'
+} as const
+
+export type DependencyScalarFieldEnum = (typeof DependencyScalarFieldEnum)[keyof typeof DependencyScalarFieldEnum]
+
+
+export const ResourceAssignmentScalarFieldEnum = {
+  id: 'id',
+  programmeId: 'programmeId',
+  taskId: 'taskId',
+  resourceId: 'resourceId',
+  units: 'units',
+  plannedWork: 'plannedWork',
+  actualWork: 'actualWork',
+  rateOverride: 'rateOverride',
+  tradeName: 'tradeName',
+  subcontractorId: 'subcontractorId',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type ResourceAssignmentScalarFieldEnum = (typeof ResourceAssignmentScalarFieldEnum)[keyof typeof ResourceAssignmentScalarFieldEnum]
+
+
+export const BaselineScalarFieldEnum = {
+  id: 'id',
+  programmeId: 'programmeId',
+  baselineNumber: 'baselineNumber',
+  name: 'name',
+  description: 'description',
+  createdById: 'createdById',
+  snapshotData: 'snapshotData',
+  createdAt: 'createdAt'
+} as const
+
+export type BaselineScalarFieldEnum = (typeof BaselineScalarFieldEnum)[keyof typeof BaselineScalarFieldEnum]
+
+
+export const ProgrammeRevisionScalarFieldEnum = {
+  id: 'id',
+  programmeId: 'programmeId',
+  revisionNumber: 'revisionNumber',
+  name: 'name',
+  sourceFileName: 'sourceFileName',
+  changeSummary: 'changeSummary',
+  authorId: 'authorId',
+  snapshotData: 'snapshotData',
+  createdAt: 'createdAt'
+} as const
+
+export type ProgrammeRevisionScalarFieldEnum = (typeof ProgrammeRevisionScalarFieldEnum)[keyof typeof ProgrammeRevisionScalarFieldEnum]
+
+
+export const AuditEventScalarFieldEnum = {
+  id: 'id',
+  programmeId: 'programmeId',
+  eventType: 'eventType',
+  entityType: 'entityType',
+  entityId: 'entityId',
+  description: 'description',
+  details: 'details',
+  userId: 'userId',
+  createdAt: 'createdAt'
+} as const
+
+export type AuditEventScalarFieldEnum = (typeof AuditEventScalarFieldEnum)[keyof typeof AuditEventScalarFieldEnum]
+
+
+export const ProgrammeLockScalarFieldEnum = {
+  id: 'id',
+  programmeId: 'programmeId',
+  userId: 'userId',
+  userEmail: 'userEmail',
+  userName: 'userName',
+  lockedAt: 'lockedAt',
+  expiresAt: 'expiresAt'
+} as const
+
+export type ProgrammeLockScalarFieldEnum = (typeof ProgrammeLockScalarFieldEnum)[keyof typeof ProgrammeLockScalarFieldEnum]
+
+
 export const SortOrder = {
   asc: 'asc',
   desc: 'desc'
 } as const
 
 export type SortOrder = (typeof SortOrder)[keyof typeof SortOrder]
+
+
+export const NullableJsonNullValueInput = {
+  DbNull: DbNull,
+  JsonNull: JsonNull
+} as const
+
+export type NullableJsonNullValueInput = (typeof NullableJsonNullValueInput)[keyof typeof NullableJsonNullValueInput]
+
+
+export const JsonNullValueInput = {
+  JsonNull: JsonNull
+} as const
+
+export type JsonNullValueInput = (typeof JsonNullValueInput)[keyof typeof JsonNullValueInput]
 
 
 export const QueryMode = {
@@ -117,4 +294,13 @@ export const NullsOrder = {
 } as const
 
 export type NullsOrder = (typeof NullsOrder)[keyof typeof NullsOrder]
+
+
+export const JsonNullValueFilter = {
+  DbNull: DbNull,
+  JsonNull: JsonNull,
+  AnyNull: AnyNull
+} as const
+
+export type JsonNullValueFilter = (typeof JsonNullValueFilter)[keyof typeof JsonNullValueFilter]
 

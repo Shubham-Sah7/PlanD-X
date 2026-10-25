@@ -13,6 +13,7 @@ import {
   FileText,
   ExternalLink,
   ChevronsUpDown,
+  Briefcase,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -31,6 +32,7 @@ interface NavItem {
 const PRIMARY_NAV: NavItem[] = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "programme", label: "Programme", icon: BarChart2, viewTarget: "gantt" },
+  { id: "portfolio", label: "Portfolio", icon: Briefcase, viewTarget: "portfolio" },
   { id: "calendar", label: "Calendar", icon: Calendar, viewTarget: "calendar" },
   { id: "tasks", label: "Tasks", icon: CheckSquare, viewTarget: "list" },
 ];

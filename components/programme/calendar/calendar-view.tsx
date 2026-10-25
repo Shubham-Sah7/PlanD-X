@@ -2,6 +2,8 @@
 
 import React, { useState, useMemo } from "react";
 import { useProgramme } from "@/lib/programme-context";
+import { EmptyProjectState } from "../empty-project-state";
+import { formatDisplayDate, formatDateIso } from "@/lib/programme-calendar";
 import {
   ChevronRight,
   ChevronDown,
@@ -343,36 +345,88 @@ function DottedProgressBar({
 }
 
 export function CalendarView() {
-  const { state, openDrawer, selectTask } = useProgramme();
+  const { state, openDrawer, selectTask, currentProject, createTask, openAddTask, statusDate } = useProgramme();
 
   // View mode: "board" (Kanban daily tasks matching reference) or "month" (monthly grid)
   const [subView, setSubView] = useState<CalendarSubView>("board");
-  const [tasks, setTasks] = useState<KanbanTask[]>(INITIAL_BOARD_TASKS);
   const [selectedAssignee, setSelectedAssignee] = useState<string | null>(null);
   const [viewDropdownOpen, setViewDropdownOpen] = useState<boolean>(false);
   const [filterPanelOpen, setFilterPanelOpen] = useState<boolean>(false);
   const [createModalOpen, setCreateModalOpen] = useState<boolean>(false);
-  const [newTaskColumn, setNewTaskColumn] = useState<KanbanTask["columnId"]>("today");
+  const [newTaskColumn, setNewTaskColumn] = useState<ScheduleColumnId>("today");
   const [newTaskTitle, setNewTaskTitle] = useState<string>("");
+  const [checklistOverrides, setChecklistOverrides] = useState<Record<string, Record<string, boolean>>>({});
 
-  // Toggle checklist item
   const toggleChecklist = (taskId: string, itemId: string) => {
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id !== taskId || !t.checklist) return t;
-        const updated = t.checklist.map((item) =>
-          item.id === itemId ? { ...item, done: !item.done } : item
-        );
-        const doneCount = updated.filter((item) => item.done).length;
-        const newProgress = Math.round((doneCount / updated.length) * 100);
-        return {
-          ...t,
-          checklist: updated,
-          progress: newProgress,
-        };
-      })
-    );
+    setChecklistOverrides((prev) => ({
+      ...prev,
+      [taskId]: {
+        ...(prev[taskId] || {}),
+        [itemId]: !(prev[taskId]?.[itemId]),
+      },
+    }));
   };
+
+  // Empty project guard
+  if (state.tasks.length === 0) {
+    return <EmptyProjectState />;
+  }
+
+  // Derive board tasks dynamically from authoritative state.tasks
+  const dynamicBoardTasks = useMemo<KanbanTask[]>(() => {
+    const todayStr = statusDate || currentProject?.statusDate || formatDateIso(new Date());
+
+    return state.tasks
+      .filter((t) => t.level !== "phase")
+      .map((t) => {
+        let columnId: ScheduleColumnId = "upcoming";
+        const start = t.startDate || todayStr;
+        const end = t.endDate || start;
+
+        if (t.status === "blocked" || t.isBlocked) {
+          columnId = "blocked";
+        } else if (t.progress < 100 && end < todayStr) {
+          columnId = "overdue";
+        } else if (start <= todayStr && end >= todayStr) {
+          columnId = "today";
+        } else if (start > todayStr) {
+          const diffMs = new Date(start).getTime() - new Date(todayStr).getTime();
+          const diffDays = diffMs / (1000 * 3600 * 24);
+          if (diffDays <= 14) columnId = "due-soon";
+          else columnId = "upcoming";
+        }
+
+        const assigneeName = t.assignee || t.subcontractor || (t.trade ? `${t.trade} Team` : "Site Team");
+        const initials = assigneeName
+          .split(" ")
+          .map((p) => p[0])
+          .join("")
+          .slice(0, 2)
+          .toUpperCase();
+
+        return {
+          id: t.id,
+          columnId,
+          title: t.name,
+          tags: [
+            { label: t.trade ? String(t.trade).toLowerCase() : "general", bgClass: "bg-blue-100", textClass: "text-blue-800" },
+            ...(t.isCritical ? [{ label: "critical", bgClass: "bg-rose-100", textClass: "text-rose-800 font-bold" }] : []),
+            ...(t.isMilestone ? [{ label: "milestone", bgClass: "bg-purple-100", textClass: "text-purple-800 font-bold" }] : []),
+          ],
+          bgClass: t.isCritical ? "bg-rose-50/40" : "bg-white",
+          borderClass: t.isCritical ? "border-rose-200" : "border-slate-200",
+          dotActiveColor: t.progress >= 100 ? "bg-emerald-600" : t.progress > 0 ? "bg-blue-600" : "bg-slate-300",
+          progress: t.progress,
+          assignees: [{ name: assigneeName, initials, avatarBg: "bg-blue-600" }],
+          commentsCount: t.notes ? 1 : 0,
+          attachmentsCount: t.siteAttendance?.length || 0,
+          dueDate: formatDisplayDate(t.displayEnd || t.endDate),
+          note: t.notes || (t.isBlocked ? t.blockedBy : undefined),
+        };
+      });
+  }, [state.tasks, statusDate, currentProject]);
+
+  const tasks = dynamicBoardTasks;
 
   // Filter tasks
   const filteredTasks = useMemo(() => {
@@ -387,23 +441,12 @@ export function CalendarView() {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
 
-    const newTask: KanbanTask = {
-      id: `task-custom-${Date.now()}`,
-      columnId: newTaskColumn,
-      title: newTaskTitle.trim(),
-      tags: [
-        { label: "site-task", bgClass: "bg-blue-100/90", textClass: "text-blue-800" },
-      ],
-      bgClass: "bg-white",
-      borderClass: "border-slate-200",
-      dotActiveColor: "bg-blue-600",
-      progress: 0,
-      assignees: [{ name: "John Smith", initials: "JS", avatarBg: "bg-blue-600" }],
-      commentsCount: 0,
-      attachmentsCount: 0,
-    };
+    createTask({
+      name: newTaskTitle.trim(),
+      isMilestone: false,
+      duration: 5,
+    });
 
-    setTasks((prev) => [newTask, ...prev]);
     setNewTaskTitle("");
     setCreateModalOpen(false);
   };
@@ -415,10 +458,10 @@ export function CalendarView() {
         {/* Left: Month title & date */}
         <div className="flex flex-col">
           <h2 className="text-[18px] font-semibold tracking-tight text-slate-900 leading-tight">
-            May
+            {currentProject?.name || "Construction Schedule"}
           </h2>
           <span className="text-[12px] text-slate-400 mt-0.5">
-            Today is Saturday, Jul 9th, 2023 · Building 2 & Unit 80
+            Planned Start: {currentProject?.plannedStartDate || "Today"} · Status Date: {statusDate || currentProject?.statusDate || "Active"} · {currentProject?.location || "Site Location"}
           </span>
         </div>
 
@@ -648,33 +691,40 @@ export function CalendarView() {
                       {/* Optional Checklist Items with Round Checkmarks */}
                       {task.checklist && task.checklist.length > 0 && (
                         <div className="my-2 space-y-1.5">
-                          {task.checklist.map((item) => (
-                            <div
-                              key={item.id}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleChecklist(task.id, item.id);
-                              }}
-                              className="flex items-start gap-2 text-[11.5px] text-slate-700 cursor-pointer"
-                            >
-                              {item.done ? (
-                                <div className="h-3.5 w-3.5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[8.5px] font-bold shrink-0 mt-0.5">
-                                  ✓
-                                </div>
-                              ) : (
-                                <div className="h-3.5 w-3.5 rounded-full border-2 border-slate-300 shrink-0 mt-0.5" />
-                              )}
-                              <span
-                                className={
-                                  item.done
-                                    ? "line-through text-slate-400"
-                                    : "font-medium"
-                                }
+                          {task.checklist.map((item) => {
+                            const isDone =
+                              checklistOverrides[task.id]?.[item.id] !== undefined
+                                ? checklistOverrides[task.id][item.id]
+                                : item.done;
+
+                            return (
+                              <div
+                                key={item.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleChecklist(task.id, item.id);
+                                }}
+                                className="flex items-start gap-2 text-[11.5px] text-slate-700 cursor-pointer"
                               >
-                                {item.text}
-                              </span>
-                            </div>
-                          ))}
+                                {isDone ? (
+                                  <div className="h-3.5 w-3.5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[8.5px] font-bold shrink-0 mt-0.5">
+                                    ✓
+                                  </div>
+                                ) : (
+                                  <div className="h-3.5 w-3.5 rounded-full border-2 border-slate-300 shrink-0 mt-0.5" />
+                                )}
+                                <span
+                                  className={
+                                    isDone
+                                      ? "line-through text-slate-400"
+                                      : "font-medium"
+                                  }
+                                >
+                                  {item.text}
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
 

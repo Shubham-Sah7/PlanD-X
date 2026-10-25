@@ -19,10 +19,35 @@ import { ProgrammeReportView } from "@/components/programme/reporting/programme-
 import { ExportModal } from "@/components/programme/reporting/export-modal";
 import { MspImportModal } from "@/components/programme/msp-import-modal";
 import { BaselineRevisionsModal } from "@/components/programme/baseline/baseline-revisions-modal";
+import { ScheduleHealthModal } from "@/components/programme/health/schedule-health-modal";
+import { ResourceLevelingModal } from "@/components/programme/resources/resource-leveling-modal";
+import { ConfirmationModal } from "@/components/programme/confirmation-modal";
+import { AddTaskModal } from "@/components/programme/add-task-modal";
+import { BulkEditModal } from "@/components/programme/bulk-edit-modal";
+import { RevisionComparisonModal } from "@/components/programme/reconciliation/revision-comparison-modal";
+import { ConcurrencyConflictModal } from "@/components/programme/persistence/concurrency-conflict-modal";
+import { RollbackModal } from "@/components/programme/persistence/rollback-modal";
+import { ProjectManagementModal } from "@/components/programme/project/project-management-modal";
+import { ScenarioSandboxBanner } from "@/components/programme/scenarios/scenario-sandbox-banner";
+import { CreateScenarioModal } from "@/components/programme/scenarios/create-scenario-modal";
+import { WBSLibraryModal } from "@/components/programme/templates/wbs-library-modal";
+import { MobileSiteCompanionModal } from "@/components/programme/mobile/mobile-site-companion-modal";
+import { ProgrammePublishingModal } from "@/components/programme/publishing/programme-publishing-modal";
+import { PortfolioView } from "@/components/programme/portfolio/portfolio-view";
 import Model3DPage from "./3d/page";
 
 export default function ProgrammePage() {
-  const { state } = useProgramme();
+  const {
+    state,
+    isConflictModalOpen,
+    conflictDetails,
+    closeConflictModal,
+    resolveConflict,
+    isRollbackModalOpen,
+    closeRollbackModal,
+    programmeVersion,
+    onRollbackSuccess,
+  } = useProgramme();
   const isMobile = useIsMobile();
 
   // Mobile experience
@@ -52,6 +77,9 @@ export default function ProgrammePage() {
 
         {/* Main Programme Area */}
         <main className="flex flex-1 flex-col overflow-y-auto px-5 py-3 min-w-0">
+          {/* What-If Alternative Schedule Scenario Sandbox Banner */}
+          <ScenarioSandboxBanner />
+
           {/* Top Section: Programme Header (Hero with 3D BIM model) */}
           <ProgrammeHeader />
 
@@ -72,6 +100,7 @@ export default function ProgrammePage() {
                 {state.activeView === "list" && <ListView />}
                 {state.activeView === "network" && <NetworkView />}
                 {state.activeView === "reports" && <ProgrammeReportView />}
+                {state.activeView === "portfolio" && <PortfolioView />}
               </div>
 
               {/* Right Task Detail Drawer (Matching Image 4) */}
@@ -92,6 +121,52 @@ export default function ProgrammePage() {
 
       {/* Baseline Integrity, Revisions & Change History Dialog */}
       <BaselineRevisionsModal />
+
+      {/* DCMA 14-Point Schedule Quality & Risk Analysis Dialog */}
+      <ScheduleHealthModal />
+
+      {/* Resource Allocation & Non-Destructive Levelling Dialog */}
+      <ResourceLevelingModal />
+
+      {/* Task Creation & Structural Modification Modals */}
+      <AddTaskModal />
+      <BulkEditModal />
+      <ConfirmationModal />
+
+      {/* Programme Revision Comparison & Reconciliation Modal */}
+      <RevisionComparisonModal />
+
+      {/* Concurrency Conflict Resolution Modal */}
+      <ConcurrencyConflictModal
+        isOpen={isConflictModalOpen}
+        conflictDetails={conflictDetails}
+        onClose={closeConflictModal}
+        onReload={() => resolveConflict("reload")}
+        onForceOverwrite={() => resolveConflict("overwrite")}
+      />
+
+      {/* Programme Revision History & Rollback Modal */}
+      <RollbackModal
+        isOpen={isRollbackModalOpen}
+        onClose={closeRollbackModal}
+        currentVersion={programmeVersion}
+        onRollbackSuccess={onRollbackSuccess}
+      />
+
+      {/* Multi-Project & Programme Workspace Modal */}
+      <ProjectManagementModal />
+
+      {/* WBS Work Package Snippet Library Modal */}
+      <WBSLibraryModal />
+
+      {/* What-If Schedule Scenario Creation Modal */}
+      <CreateScenarioModal />
+
+      {/* Mobile Site Companion & Offline Sync Modal */}
+      <MobileSiteCompanionModal />
+
+      {/* Controlled Programme Publishing & Transmittal Modal */}
+      <ProgrammePublishingModal />
     </div>
   );
 }

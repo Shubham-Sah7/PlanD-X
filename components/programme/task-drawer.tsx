@@ -29,9 +29,20 @@ import {
   ShieldCheck,
   History,
   User,
+  Sliders,
+  AlertOctagon,
+  Copy,
+  ArrowUp,
+  ArrowDown,
+  ArrowLeft,
+  Flag,
+  FolderTree,
+  Receipt,
+  HardHat,
+  Briefcase,
 } from "lucide-react";
 import { useProgramme } from "@/lib/programme-context";
-import type { TaskStatus, DependencyType } from "@/lib/programme-types";
+import type { TaskStatus, DependencyType, TaskType, ConstraintType } from "@/lib/programme-types";
 import {
   calculateScheduleVariance,
   formatVarianceDisplay,
@@ -49,6 +60,7 @@ import {
 } from "@/lib/programme-dependencies";
 import { DependencyEditorModal } from "./dependencies/dependency-editor-modal";
 import { ResourceAssignmentDropdown } from "./resources/resource-assignment-dropdown";
+import { TaskResourceAttendanceSection } from "./resources/task-resource-attendance-section";
 
 export function TaskDrawer() {
   const {
@@ -62,16 +74,33 @@ export function TaskDrawer() {
     projectCalendar,
     openCalendarModal,
     removeDependency,
+    addDependency,
+    updateDependency,
     scheduleAuditLog,
     openRevisions,
+    verifyPhysicalProgress,
+    duplicateTask,
+    deleteTask,
+    indentTask,
+    outdentTask,
+    reorderTask,
+    projectResources,
+    assignResourceToTask,
+    removeResourceFromTask,
+    linkTaskSubcontractor,
+    recordSiteAttendance,
+    recordSubcontractorClaim,
+    updateTaskIntegrations,
   } = useProgramme();
-  const [activeTab, setActiveTab] = useState<"details" | "dependencies" | "updates" | "files">("details");
+  const [activeTab, setActiveTab] = useState<"details" | "dependencies" | "updates" | "files" | "qa" | "integrations">("details");
 
   // Modals / dropdowns for interactive actions
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [progressModalOpen, setProgressModalOpen] = useState(false);
   const [newProgressValue, setNewProgressValue] = useState(60);
   const [newStatusValue, setNewStatusValue] = useState<TaskStatus>("in-progress");
+  const [subcontractorClaimValue, setSubcontractorClaimValue] = useState<number>(0);
+  const [subcontractorClaimNotes, setSubcontractorClaimNotes] = useState<string>("");
 
   const [noteModalOpen, setNoteModalOpen] = useState(false);
   const [noteText, setNoteText] = useState("");
@@ -100,6 +129,13 @@ export function TaskDrawer() {
     setDepModalOpen(true);
   };
 
+  // Successor modal/inline link state
+  const [isAddSuccessorOpen, setIsAddSuccessorOpen] = useState(false);
+  const [selectedSuccessorId, setSelectedSuccessorId] = useState("");
+  const [successorType, setSuccessorType] = useState<DependencyType>("FS");
+  const [successorLag, setSuccessorLag] = useState<number>(0);
+  const [successorError, setSuccessorError] = useState<string | null>(null);
+
   if (!state.drawerOpen || !state.selectedTaskId) {
     return null;
   }
@@ -108,7 +144,11 @@ export function TaskDrawer() {
   const currentTask =
     state.tasks.find((t) => t.id === state.selectedTaskId) ||
     state.tasks.find((t) => t.id === "PRG-021") ||
-    state.tasks.find((t) => t.id === "task-columns")!;
+    state.tasks.find((t) => t.id === "task-columns");
+
+  if (!currentTask) {
+    return null;
+  }
 
   // Dynamic extracted predecessor links
   const currentTaskPredLinks = useMemo(() => {
@@ -117,40 +157,78 @@ export function TaskDrawer() {
 
   // Dynamic extracted successor links
   const currentTaskSuccLinks = useMemo(() => {
-    const list: { id: string; name?: string; type: DependencyType; lag: number }[] = [];
-    const seen = new Set<string>();
-
-    for (const task of state.tasks) {
-      const preds = getTaskPredecessorLinks(task);
-      const match = preds.find((p) => p.id === currentTask.id);
-      if (match && !seen.has(task.id)) {
-        seen.add(task.id);
+    const list: Array<{ id: string; name?: string; type: DependencyType; lag: number }> = [];
+    for (const t of state.tasks) {
+      if (t.id === currentTask.id) continue;
+      if (t.predecessors?.includes(currentTask.id)) {
+        const detail = t.predecessorDetails?.find((d) => d.id === currentTask.id);
         list.push({
-          id: task.id,
-          name: task.name,
-          type: match.type,
-          lag: match.lag,
+          id: t.id,
+          name: t.name,
+          type: detail?.type || "FS",
+          lag: detail?.lag || 0,
         });
       }
     }
-
-    if (currentTask.successors) {
-      for (const succId of currentTask.successors) {
-        if (!seen.has(succId)) {
-          seen.add(succId);
-          const succTask = state.tasks.find((t) => t.id === succId);
-          list.push({
-            id: succId,
-            name: succTask?.name || succId,
-            type: "FS",
-            lag: 0,
-          });
-        }
-      }
-    }
-
     return list;
   }, [state.tasks, currentTask]);
+
+  const candidatePredecessors = useMemo(() => {
+    const existingPredIds = new Set(currentTaskPredLinks.map((p) => p.id));
+    return state.tasks.filter(
+      (t) => t.id !== currentTask.id && !existingPredIds.has(t.id) && t.level !== "phase"
+    );
+  }, [state.tasks, currentTask.id, currentTaskPredLinks]);
+
+  const candidateSuccessors = useMemo(() => {
+    const existingSuccIds = new Set(currentTaskSuccLinks.map((s) => s.id));
+    return state.tasks.filter(
+      (t) => t.id !== currentTask.id && !existingSuccIds.has(t.id) && t.level !== "phase"
+    );
+  }, [state.tasks, currentTask.id, currentTaskSuccLinks]);
+
+  // MS Project Interactive Table Grid State
+  const [depViewMode, setDepViewMode] = useState<"grid" | "cards">("grid");
+  const [newPredSelectId, setNewPredSelectId] = useState<string>("");
+  const [newPredType, setNewPredType] = useState<DependencyType>("FS");
+  const [newPredLag, setNewPredLag] = useState<number>(0);
+
+  const [newSuccSelectId, setNewSuccSelectId] = useState<string>("");
+  const [newSuccType, setNewSuccType] = useState<DependencyType>("FS");
+  const [newSuccLag, setNewSuccLag] = useState<number>(0);
+
+  const handleAddPredInline = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newPredSelectId) return;
+    addDependency(newPredSelectId, currentTask.id, newPredType, newPredLag);
+    setNewPredSelectId("");
+    setNewPredLag(0);
+  };
+
+  const handleAddSuccInline = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newSuccSelectId) return;
+    addDependency(currentTask.id, newSuccSelectId, newSuccType, newSuccLag);
+    setNewSuccSelectId("");
+    setNewSuccLag(0);
+  };
+
+  const handleAddSuccessor = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedSuccessorId) {
+      setSuccessorError("Please select a successor task");
+      return;
+    }
+    const res = addDependency(currentTask.id, selectedSuccessorId, successorType, successorLag);
+    if (!res.success) {
+      setSuccessorError(res.error || "Failed to link successor");
+      return;
+    }
+    setIsAddSuccessorOpen(false);
+    setSelectedSuccessorId("");
+    setSuccessorLag(0);
+    setSuccessorError(null);
+  };
 
   // Task-specific schedule change audit history
   const taskAuditEvents = useMemo(() => {
@@ -159,6 +237,12 @@ export function TaskDrawer() {
 
   const handleSaveProgress = () => {
     updateTaskProgress(currentTask.id, newProgressValue, newStatusValue);
+    if (
+      subcontractorClaimValue !== (currentTask.subcontractorClaimedProgress ?? currentTask.progress) ||
+      subcontractorClaimNotes !== (currentTask.subcontractorClaimNotes ?? "")
+    ) {
+      recordSubcontractorClaim(currentTask.id, subcontractorClaimValue, subcontractorClaimNotes);
+    }
     setProgressModalOpen(false);
   };
 
@@ -243,6 +327,40 @@ export function TaskDrawer() {
     }
     setScheduleError(null);
     setIsEditingSchedule(false);
+  };
+
+  // MS Project Calculation, Workload & Constraints State
+  const [isEditingMspCalc, setIsEditingMspCalc] = useState(false);
+  const [editTaskType, setEditTaskType] = useState<TaskType>(currentTask?.taskType || "fixed-duration");
+  const [editEffortDriven, setEditEffortDriven] = useState<boolean>(Boolean(currentTask?.effortDriven));
+  const [editWorkHours, setEditWorkHours] = useState<number>(currentTask?.workHours ?? (currentTask?.duration || 1) * 8);
+  const [editUnits, setEditUnits] = useState<number>(currentTask?.assignmentUnits ?? 1.0);
+  const [editConstraintType, setEditConstraintType] = useState<ConstraintType>(currentTask?.constraintType || "ASAP");
+  const [editConstraintDate, setEditConstraintDate] = useState<string>(currentTask?.constraintDate || "");
+  const [editDeadline, setEditDeadline] = useState<string>(currentTask?.deadline || "");
+
+  const handleStartEditMspCalc = () => {
+    setEditTaskType(currentTask?.taskType || "fixed-duration");
+    setEditEffortDriven(Boolean(currentTask?.effortDriven));
+    setEditWorkHours(currentTask?.workHours ?? (currentTask?.duration || 1) * 8);
+    setEditUnits(currentTask?.assignmentUnits ?? 1.0);
+    setEditConstraintType(currentTask?.constraintType || "ASAP");
+    setEditConstraintDate(currentTask?.constraintDate || "");
+    setEditDeadline(currentTask?.deadline || "");
+    setIsEditingMspCalc(true);
+  };
+
+  const handleSaveMspCalc = () => {
+    updateTaskDetails(currentTask.id, {
+      taskType: editTaskType,
+      effortDriven: editEffortDriven,
+      workHours: editWorkHours,
+      assignmentUnits: editUnits,
+      constraintType: editConstraintType,
+      constraintDate: editConstraintDate || undefined,
+      deadline: editDeadline || undefined,
+    });
+    setIsEditingMspCalc(false);
   };
 
   const predecessorConstraint = useMemo(() => {
@@ -379,6 +497,70 @@ export function TaskDrawer() {
               </div>
             )}
           </div>
+
+          {/* Quick Task Operations Bar */}
+          <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-slate-100 flex-wrap">
+            <button
+              id="drawer-duplicate-btn"
+              type="button"
+              onClick={() => duplicateTask(currentTask.id)}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded transition-colors"
+              title="Duplicate task"
+            >
+              <Copy className="h-3 w-3 text-slate-500" />
+              <span>Duplicate</span>
+            </button>
+            <button
+              id="drawer-indent-btn"
+              type="button"
+              onClick={() => indentTask(currentTask.id)}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded transition-colors"
+              title="Indent task into predecessor group"
+            >
+              <ArrowRight className="h-3 w-3 text-slate-500" />
+              <span>Indent</span>
+            </button>
+            <button
+              id="drawer-outdent-btn"
+              type="button"
+              onClick={() => outdentTask(currentTask.id)}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded transition-colors"
+              title="Outdent task to higher WBS level"
+            >
+              <ArrowLeft className="h-3 w-3 text-slate-500" />
+              <span>Outdent</span>
+            </button>
+            <div className="inline-flex items-center border border-slate-200 rounded overflow-hidden">
+              <button
+                id="drawer-move-up-btn"
+                type="button"
+                onClick={() => reorderTask(currentTask.id, "up")}
+                className="p-1 text-slate-600 bg-slate-50 hover:bg-slate-100 border-r border-slate-200 transition-colors"
+                title="Move task up"
+              >
+                <ArrowUp className="h-3 w-3" />
+              </button>
+              <button
+                id="drawer-move-down-btn"
+                type="button"
+                onClick={() => reorderTask(currentTask.id, "down")}
+                className="p-1 text-slate-600 bg-slate-50 hover:bg-slate-100 transition-colors"
+                title="Move task down"
+              >
+                <ArrowDown className="h-3 w-3" />
+              </button>
+            </div>
+            <button
+              id="drawer-delete-btn"
+              type="button"
+              onClick={() => deleteTask(currentTask.id)}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded transition-colors ml-auto"
+              title="Delete task (with confirmation if child tasks or links exist)"
+            >
+              <Trash2 className="h-3 w-3 text-red-500" />
+              <span>Delete</span>
+            </button>
+          </div>
         </div>
 
         {/* Close Button */}
@@ -443,6 +625,17 @@ export function TaskDrawer() {
         >
           <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
           <span>3D QA</span>
+        </button>
+        <button
+          onClick={() => setActiveTab("integrations")}
+          className={`py-2.5 px-2.5 border-b-2 font-medium transition-colors flex items-center gap-1.5 ${
+            activeTab === "integrations"
+              ? "border-indigo-600 text-indigo-600 font-bold"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          <Layers className="h-3.5 w-3.5 text-indigo-500" />
+          <span>Modules</span>
         </button>
       </div>
 
@@ -583,6 +776,54 @@ export function TaskDrawer() {
                     ))}
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Physical Verification Governance (Requirement 4) */}
+            <div className="rounded-lg border border-slate-200/90 bg-slate-50/80 p-2.5 space-y-2 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <ShieldCheck
+                    className={`h-4 w-4 ${
+                      currentTask.verifiedPhysicalProgress ? "text-emerald-600" : "text-slate-400"
+                    }`}
+                  />
+                  <span className="text-[12px] font-semibold text-slate-800">
+                    Physical Progress Verification
+                  </span>
+                </div>
+                {currentTask.verifiedPhysicalProgress ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                    Verified On-Site
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-amber-100 text-amber-800 border border-amber-200">
+                    <AlertTriangle className="h-3 w-3 text-amber-600" />
+                    Self-Reported (Unverified)
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 leading-snug">
+                Construction governance rule: Percentage complete is never treated as verified completion without physical QA sign-off.
+              </p>
+              <div className="flex items-center justify-between pt-0.5">
+                <label className="flex items-center gap-2 cursor-pointer text-[12px] font-medium text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(currentTask.verifiedPhysicalProgress)}
+                    onChange={(e) =>
+                      verifyPhysicalProgress(currentTask.id, e.target.checked, "Site QA Inspector")
+                    }
+                    className="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                  />
+                  <span>Mark Progress as Physically Verified</span>
+                </label>
+                {currentTask.verifiedAt && (
+                  <span className="text-[10.5px] text-slate-400 font-mono">
+                    {formatDisplayDate(currentTask.verifiedAt.split("T")[0])}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -981,6 +1222,247 @@ export function TaskDrawer() {
               );
             })()}
 
+            {/* MS Project Work, Units & Task Type Settings (Requirements 1, 2, 3, 4) */}
+            <div className="rounded-lg border border-slate-200/90 bg-white p-3 space-y-2.5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] font-semibold text-slate-700 flex items-center gap-1.5">
+                  <Sliders className="h-3.5 w-3.5 text-blue-600" />
+                  MSP Calculation &amp; Workload
+                </span>
+                {!isEditingMspCalc && currentTask.level !== "phase" && (
+                  <button
+                    type="button"
+                    onClick={handleStartEditMspCalc}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-0.5 rounded transition-colors"
+                  >
+                    <Edit2 className="h-3 w-3" />
+                    <span>Configure</span>
+                  </button>
+                )}
+              </div>
+
+              {isEditingMspCalc ? (
+                <div className="rounded-lg border border-blue-200 bg-blue-50/40 p-2.5 space-y-2.5 text-[11.5px]">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-slate-600 text-[11px] font-medium mb-1">
+                        Task Type
+                      </label>
+                      <select
+                        value={editTaskType}
+                        onChange={(e) => setEditTaskType(e.target.value as TaskType)}
+                        className="w-full px-2 py-1 rounded border border-slate-300 bg-white text-slate-800 text-[11px] font-medium focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="fixed-duration">Fixed Duration</option>
+                        <option value="fixed-work">Fixed Work</option>
+                        <option value="fixed-units">Fixed Units</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-600 text-[11px] font-medium mb-1">
+                        Effort-Driven
+                      </label>
+                      <div className="pt-1.5 flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="effort-driven-check"
+                          checked={editEffortDriven}
+                          onChange={(e) => setEditEffortDriven(e.target.checked)}
+                          className="rounded text-blue-600 h-4 w-4"
+                        />
+                        <label htmlFor="effort-driven-check" className="text-[11px] text-slate-700 font-medium">
+                          Effort-Driven
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-slate-600 text-[11px] font-medium mb-1">
+                        Total Work (Hours)
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={editWorkHours}
+                        onChange={(e) => setEditWorkHours(Math.max(0, parseFloat(e.target.value) || 0))}
+                        className="w-full px-2 py-1 rounded border border-slate-300 bg-white font-mono text-slate-800 text-[11px] focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-600 text-[11px] font-medium mb-1">
+                        Units (1.0 = 100%)
+                      </label>
+                      <input
+                        type="number"
+                        min={0.1}
+                        step={0.1}
+                        value={editUnits}
+                        onChange={(e) => setEditUnits(Math.max(0.1, parseFloat(e.target.value) || 1.0))}
+                        className="w-full px-2 py-1 rounded border border-slate-300 bg-white font-mono text-slate-800 text-[11px] focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-slate-600 text-[11px] font-medium mb-1">
+                        Constraint Type
+                      </label>
+                      <select
+                        value={String(editConstraintType)}
+                        onChange={(e) => setEditConstraintType(e.target.value as ConstraintType)}
+                        className="w-full px-2 py-1 rounded border border-slate-300 bg-white text-slate-800 text-[11px] font-medium focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="ASAP">ASAP (As Soon As Possible)</option>
+                        <option value="ALAP">ALAP (As Late As Possible)</option>
+                        <option value="MSO">MSO (Must Start On)</option>
+                        <option value="MFO">MFO (Must Finish On)</option>
+                        <option value="SNET">SNET (Start No Earlier Than)</option>
+                        <option value="SNLT">SNLT (Start No Later Than)</option>
+                        <option value="FNET">FNET (Finish No Earlier Than)</option>
+                        <option value="FNLT">FNLT (Finish No Later Than)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-slate-600 text-[11px] font-medium mb-1">
+                        Constraint Date
+                      </label>
+                      <input
+                        type="date"
+                        value={editConstraintDate}
+                        onChange={(e) => setEditConstraintDate(e.target.value)}
+                        disabled={editConstraintType === "ASAP" || editConstraintType === "ALAP"}
+                        className="w-full px-2 py-1 rounded border border-slate-300 bg-white font-mono text-slate-800 text-[11px] disabled:bg-slate-100 disabled:text-slate-400 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-600 text-[11px] font-medium mb-1">
+                      Milestone Deadline
+                    </label>
+                    <input
+                      type="date"
+                      value={editDeadline}
+                      onChange={(e) => setEditDeadline(e.target.value)}
+                      className="w-full px-2 py-1 rounded border border-slate-300 bg-white font-mono text-slate-800 text-[11px] focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-blue-100">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingMspCalc(false)}
+                      className="px-2 py-1 text-[11px] text-slate-600 hover:text-slate-800 rounded border border-slate-200 bg-white hover:bg-slate-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveMspCalc}
+                      className="px-2.5 py-1 text-[11px] font-medium text-white bg-blue-600 hover:bg-blue-700 rounded shadow-xs"
+                    >
+                      Save &amp; Recalculate
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2 text-[11.5px]">
+                  <div className="grid grid-cols-2 gap-2 text-slate-700">
+                    <div className="flex items-center justify-between bg-slate-50 p-2 rounded border border-slate-100">
+                      <span className="text-slate-500">Task Type:</span>
+                      <span className="font-semibold text-slate-800 capitalize">
+                        {currentTask.taskType || "Fixed Duration"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between bg-slate-50 p-2 rounded border border-slate-100">
+                      <span className="text-slate-500">Effort-Driven:</span>
+                      <span className="font-semibold text-slate-800">
+                        {currentTask.effortDriven ? "Yes" : "No"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-slate-700">
+                    <div className="flex items-center justify-between bg-slate-50 p-2 rounded border border-slate-100">
+                      <span className="text-slate-500">Total Work:</span>
+                      <span className="font-mono font-bold text-slate-800">
+                        {typeof currentTask.workHours === "number" ? `${currentTask.workHours}h` : `${(currentTask.duration || 1) * 8}h`}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between bg-slate-50 p-2 rounded border border-slate-100">
+                      <span className="text-slate-500">Allocation:</span>
+                      <span className="font-mono font-bold text-slate-800">
+                        {Math.round((currentTask.assignmentUnits ?? 1.0) * 100)}%
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Over-allocation warning banner */}
+                  {currentTask.overallocated && (
+                    <div className="rounded border border-red-200 bg-red-50 p-2 text-[11px] text-red-800 flex items-start gap-1.5">
+                      <AlertCircle className="h-3.5 w-3.5 text-red-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold">Resource Over-allocated:</span> Peak workload is{" "}
+                        <span className="font-mono font-bold">{currentTask.peakAllocationPercent}%</span>{" "}
+                        (exceeds 100% daily availability).
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Constraints & Deadlines Info */}
+                  <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Constraint:</span>
+                      <span className="font-mono font-medium text-slate-800">
+                        {String(currentTask.constraintType || "ASAP")}
+                        {currentTask.constraintDate ? ` (${currentTask.constraintDate})` : ""}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Milestone Deadline:</span>
+                      <span className="font-mono font-medium text-slate-800">
+                        {currentTask.deadline || "None"}
+                      </span>
+                    </div>
+
+                    {currentTask.deadlineViolated && (
+                      <div className="rounded border border-red-200 bg-red-50 p-2 text-[11px] text-red-800 flex items-start gap-1.5">
+                        <AlertOctagon className="h-3.5 w-3.5 text-red-600 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold">Deadline Violated:</span> Activity finish is{" "}
+                          <span className="font-mono font-bold">+{currentTask.daysPastDeadline || 1}d</span> past contractual deadline!
+                        </div>
+                      </div>
+                    )}
+
+                    {currentTask.constraintConflict && (
+                      <div className="rounded border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800 flex items-start gap-1.5">
+                        <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold">Constraint Conflict:</span>{" "}
+                          {currentTask.constraintConflictReason || "Predecessor pushes task past constraint limit."}
+                        </div>
+                      </div>
+                    )}
+
+                    {currentTask.forecastFinish && (
+                      <div className="flex items-center justify-between bg-blue-50/60 p-1.5 rounded border border-blue-200/60">
+                        <span className="text-blue-700 font-medium">Status Date Forecast Finish:</span>
+                        <span className="font-mono font-bold text-blue-900">
+                          {currentTask.forecastFinish}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Section 3: Responsibility & Trade */}
             <div className="rounded-lg border border-slate-200/90 bg-white p-3 space-y-2.5 shadow-2xs">
               <div className="flex items-center justify-between">
@@ -1002,18 +1484,17 @@ export function TaskDrawer() {
                 </div>
               </div>
 
-              {/* Subcontractor / Assignee Dropdown */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-slate-500 text-[11.5px] font-medium">Assigned Subcontractor / Resource</span>
-                </div>
-                <ResourceAssignmentDropdown
-                  taskId={currentTask.id}
-                  taskName={currentTask.name}
-                  currentAssignee={currentTask.assignee}
-                  currentInitials={currentTask.assigneeInitials}
-                  currentSubcontractor={currentTask.subcontractor}
-                  compact={false}
+              {/* Strict 3-Way Distinction: Resource Assignment, Subcontractor, Attendance */}
+              <div className="pt-2 border-t border-slate-100">
+                <TaskResourceAttendanceSection
+                  task={currentTask}
+                  projectResources={projectResources}
+                  onAssignResource={(asgn) => assignResourceToTask(currentTask.id, asgn)}
+                  onRemoveResource={(asgnId) => removeResourceFromTask(currentTask.id, asgnId)}
+                  onLinkSubcontractor={(vendorId, vendorName) =>
+                    linkTaskSubcontractor(currentTask.id, vendorId, vendorName)
+                  }
+                  onRecordAttendance={(att) => recordSiteAttendance(currentTask.id, att)}
                 />
               </div>
             </div>
@@ -1292,183 +1773,323 @@ export function TaskDrawer() {
               </button>
             </div>
 
-            {/* Predecessors Section */}
+            {/* Predecessors Section: Microsoft Project Interactive Table */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  What Must Happen Before (Predecessors)
-                </h4>
-                <span className="text-[11px] text-slate-400 font-mono">
-                  {currentTaskPredLinks.length} linked
-                </span>
+                <div>
+                  <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    What Must Happen Before (Predecessors)
+                  </h4>
+                  <p className="text-[10.5px] text-slate-400">
+                    Tasks that control when this activity can start or finish.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    {currentTaskPredLinks.length} linked
+                  </span>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                {currentTaskPredLinks.length > 0 ? (
-                  currentTaskPredLinks.map((pred) => {
-                    const predTask = state.tasks.find((t) => t.id === pred.id);
-                    const typeColor =
-                      pred.type === "SS"
-                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                        : pred.type === "FF"
-                        ? "bg-purple-50 text-purple-700 border-purple-200"
-                        : pred.type === "SF"
-                        ? "bg-amber-50 text-amber-700 border-amber-200"
-                        : "bg-blue-50 text-blue-700 border-blue-200";
+              {/* Table or Empty State */}
+              <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xs">
+                <table className="w-full text-left text-[12px] border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-[10.5px] font-semibold text-slate-500 uppercase tracking-wider">
+                      <th className="py-2 px-3">Predecessor Task</th>
+                      <th className="py-2 px-2.5 w-32">Type</th>
+                      <th className="py-2 px-2.5 w-24">Lag</th>
+                      <th className="py-2 px-2 w-10 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {currentTaskPredLinks.length > 0 ? (
+                      currentTaskPredLinks.map((pred) => {
+                        const predTask = state.tasks.find((t) => t.id === pred.id);
+                        return (
+                          <tr key={pred.id} className="hover:bg-slate-50/80 transition-colors group">
+                            <td className="py-2 px-3">
+                              <div
+                                onClick={() => selectTask(pred.id)}
+                                className="font-medium text-slate-900 hover:text-blue-600 cursor-pointer transition-colors truncate max-w-[190px]"
+                                title={predTask?.name || pred.id}
+                              >
+                                <span className="font-mono text-[11px] text-slate-400 mr-1.5 font-semibold">
+                                  {predTask?.wbs || pred.id}
+                                </span>
+                                {predTask?.name || pred.id}
+                              </div>
+                              <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                Finish: {predTask?.displayEnd || predTask?.endDate || "—"}
+                              </div>
+                            </td>
+                            <td className="py-2 px-2.5">
+                              <select
+                                value={pred.type}
+                                onChange={(e) =>
+                                  updateDependency(pred.id, currentTask.id, e.target.value as DependencyType, pred.lag)
+                                }
+                                className="w-full text-[11.5px] font-medium bg-white border border-slate-200 rounded px-1.5 py-1 text-slate-700 outline-none focus:border-blue-500"
+                              >
+                                <option value="FS">FS (Finish-Start)</option>
+                                <option value="SS">SS (Start-Start)</option>
+                                <option value="FF">FF (Finish-Finish)</option>
+                                <option value="SF">SF (Start-Finish)</option>
+                              </select>
+                            </td>
+                            <td className="py-2 px-2.5">
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  value={pred.lag}
+                                  onChange={(e) =>
+                                    updateDependency(
+                                      pred.id,
+                                      currentTask.id,
+                                      pred.type,
+                                      parseInt(e.target.value, 10) || 0
+                                    )
+                                  }
+                                  className="w-14 text-[11.5px] font-mono text-center bg-white border border-slate-200 rounded px-1 py-1 text-slate-800 outline-none focus:border-blue-500"
+                                  placeholder="0"
+                                />
+                                <span className="text-[11px] text-slate-400">d</span>
+                              </div>
+                            </td>
+                            <td className="py-2 px-2 text-center">
+                              <button
+                                type="button"
+                                onClick={() => removeDependency(pred.id, currentTask.id)}
+                                className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                                title="Unlink predecessor"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={4} className="py-4 text-center text-[11.5px] text-slate-400 italic">
+                          No predecessor activities linked to this task.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
 
-                    return (
-                      <div
-                        key={pred.id}
-                        className="rounded-lg border border-slate-200 bg-white p-3 hover:border-slate-300 transition-colors shadow-2xs group"
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-mono text-[11px] font-semibold text-slate-500">
-                              {pred.id}
-                            </span>
-                            <span
-                              className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border ${typeColor}`}
-                            >
-                              {pred.type}
-                            </span>
-                            {pred.lag !== 0 && (
-                              <span className="font-mono text-[10.5px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200/60">
-                                {pred.lag > 0 ? `+${pred.lag}d lag` : `${pred.lag}d lead`}
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEditDependency(pred.id, pred.type, pred.lag)}
-                              className="rounded p-1 text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                              title="Edit relationship type and lag/lead"
-                            >
-                              <Edit2 className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => removeDependency(pred.id, currentTask.id)}
-                              className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                              title="Unlink predecessor"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </div>
-
-                        <div
-                          onClick={() => selectTask(pred.id)}
-                          className="font-semibold text-[13px] text-slate-900 hover:text-blue-600 cursor-pointer transition-colors"
-                        >
-                          {predTask?.name || pred.name || pred.id}
-                        </div>
-
-                        <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2 pt-1.5 border-t border-slate-100">
-                          <span>{formatDependencyRelation(pred.type, pred.lag, true)}</span>
-                          <span className="font-mono text-slate-400">
-                            {predTask?.displayEnd || predTask?.endDate || "—"}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="rounded-lg border border-dashed border-slate-200 p-4 text-center">
-                    <p className="text-[12px] text-slate-400 italic mb-2">No preceding tasks linked</p>
-                    <button
-                      type="button"
-                      onClick={handleOpenAddDependency}
-                      className="inline-flex items-center gap-1 text-[11.5px] font-medium text-blue-600 hover:underline"
+                {/* Inline Quick-Add Predecessor Row */}
+                <form
+                  onSubmit={handleAddPredInline}
+                  className="p-2.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center gap-2"
+                >
+                  <div className="flex-1 min-w-[150px]">
+                    <select
+                      id="inline-add-pred-select"
+                      value={newPredSelectId}
+                      onChange={(e) => setNewPredSelectId(e.target.value)}
+                      className="w-full text-xs bg-white border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-blue-500 text-slate-800"
                     >
-                      <Plus className="h-3 w-3" />
-                      <span>Link Predecessor</span>
-                    </button>
+                      <option value="">+ Link Predecessor Activity...</option>
+                      {candidatePredecessors.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.wbs ? `[${t.wbs}] ` : ""}{t.name.slice(0, 38)}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                )}
+                  <div className="w-24">
+                    <select
+                      value={newPredType}
+                      onChange={(e) => setNewPredType(e.target.value as DependencyType)}
+                      className="w-full text-xs bg-white border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-blue-500 text-slate-800"
+                    >
+                      <option value="FS">FS</option>
+                      <option value="SS">SS</option>
+                      <option value="FF">FF</option>
+                      <option value="SF">SF</option>
+                    </select>
+                  </div>
+                  <div className="w-16 flex items-center gap-1">
+                    <input
+                      type="number"
+                      value={newPredLag}
+                      onChange={(e) => setNewPredLag(parseInt(e.target.value, 10) || 0)}
+                      placeholder="0"
+                      className="w-full text-xs font-mono text-center bg-white border border-slate-200 rounded px-1.5 py-1.5 outline-none focus:border-blue-500 text-slate-800"
+                    />
+                    <span className="text-[11px] text-slate-400">d</span>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={!newPredSelectId}
+                    className="inline-flex items-center gap-1 rounded bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-2.5 py-1.5 text-xs font-semibold shadow-xs transition-colors"
+                  >
+                    <Plus className="h-3 w-3" />
+                    <span>Link</span>
+                  </button>
+                </form>
               </div>
             </div>
 
-            {/* Successors Section */}
+            {/* Successors Section: Microsoft Project Interactive Table */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  What Happens After (Successors)
-                </h4>
-                <span className="text-[11px] text-slate-400 font-mono">
-                  {currentTaskSuccLinks.length} linked
-                </span>
+                <div>
+                  <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    What Happens After (Successors)
+                  </h4>
+                  <p className="text-[10.5px] text-slate-400">
+                    Downstream tasks driven by completion or start of this activity.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    {currentTaskSuccLinks.length} linked
+                  </span>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                {currentTaskSuccLinks.length > 0 ? (
-                  currentTaskSuccLinks.map((succ) => {
-                    const succTask = state.tasks.find((t) => t.id === succ.id);
-                    const typeColor =
-                      succ.type === "SS"
-                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                        : succ.type === "FF"
-                        ? "bg-purple-50 text-purple-700 border-purple-200"
-                        : succ.type === "SF"
-                        ? "bg-amber-50 text-amber-700 border-amber-200"
-                        : "bg-blue-50 text-blue-700 border-blue-200";
+              {/* Successor Table */}
+              <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xs">
+                <table className="w-full text-left text-[12px] border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-[10.5px] font-semibold text-slate-500 uppercase tracking-wider">
+                      <th className="py-2 px-3">Successor Task</th>
+                      <th className="py-2 px-2.5 w-32">Type</th>
+                      <th className="py-2 px-2.5 w-24">Lag</th>
+                      <th className="py-2 px-2 w-10 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {currentTaskSuccLinks.length > 0 ? (
+                      currentTaskSuccLinks.map((succ) => {
+                        const succTask = state.tasks.find((t) => t.id === succ.id);
+                        return (
+                          <tr key={succ.id} className="hover:bg-slate-50/80 transition-colors group">
+                            <td className="py-2 px-3">
+                              <div
+                                onClick={() => selectTask(succ.id)}
+                                className="font-medium text-slate-900 hover:text-blue-600 cursor-pointer transition-colors truncate max-w-[190px]"
+                                title={succTask?.name || succ.id}
+                              >
+                                <span className="font-mono text-[11px] text-slate-400 mr-1.5 font-semibold">
+                                  {succTask?.wbs || succ.id}
+                                </span>
+                                {succTask?.name || succ.id}
+                              </div>
+                              <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                Start: {succTask?.displayStart || succTask?.startDate || "—"}
+                              </div>
+                            </td>
+                            <td className="py-2 px-2.5">
+                              <select
+                                value={succ.type}
+                                onChange={(e) =>
+                                  updateDependency(currentTask.id, succ.id, e.target.value as DependencyType, succ.lag)
+                                }
+                                className="w-full text-[11.5px] font-medium bg-white border border-slate-200 rounded px-1.5 py-1 text-slate-700 outline-none focus:border-blue-500"
+                              >
+                                <option value="FS">FS (Finish-Start)</option>
+                                <option value="SS">SS (Start-Start)</option>
+                                <option value="FF">FF (Finish-Finish)</option>
+                                <option value="SF">SF (Start-Finish)</option>
+                              </select>
+                            </td>
+                            <td className="py-2 px-2.5">
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  value={succ.lag}
+                                  onChange={(e) =>
+                                    updateDependency(
+                                      currentTask.id,
+                                      succ.id,
+                                      succ.type,
+                                      parseInt(e.target.value, 10) || 0
+                                    )
+                                  }
+                                  className="w-14 text-[11.5px] font-mono text-center bg-white border border-slate-200 rounded px-1 py-1 text-slate-800 outline-none focus:border-blue-500"
+                                  placeholder="0"
+                                />
+                                <span className="text-[11px] text-slate-400">d</span>
+                              </div>
+                            </td>
+                            <td className="py-2 px-2 text-center">
+                              <button
+                                type="button"
+                                onClick={() => removeDependency(currentTask.id, succ.id)}
+                                className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                                title="Unlink successor"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={4} className="py-4 text-center text-[11.5px] text-slate-400 italic">
+                          No successor activities linked to this task.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
 
-                    return (
-                      <div
-                        key={succ.id}
-                        className="rounded-lg border border-slate-200 bg-white p-3 hover:border-slate-300 transition-colors shadow-2xs group"
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-mono text-[11px] font-semibold text-slate-500">
-                              {succ.id}
-                            </span>
-                            <span
-                              className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border ${typeColor}`}
-                            >
-                              {succ.type}
-                            </span>
-                            {succ.lag !== 0 && (
-                              <span className="font-mono text-[10.5px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200/60">
-                                {succ.lag > 0 ? `+${succ.lag}d lag` : `${succ.lag}d lead`}
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100">
-                            <button
-                              type="button"
-                              onClick={() => removeDependency(currentTask.id, succ.id)}
-                              className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                              title="Unlink successor"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </div>
-
-                        <div
-                          onClick={() => selectTask(succ.id)}
-                          className="font-semibold text-[13px] text-slate-900 hover:text-blue-600 cursor-pointer transition-colors"
-                        >
-                          {succTask?.name || succ.name || succ.id}
-                        </div>
-
-                        <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2 pt-1.5 border-t border-slate-100">
-                          <span>{formatDependencyRelation(succ.type, succ.lag, false)}</span>
-                          <span className="font-mono text-slate-400">
-                            {succTask?.displayStart || succTask?.startDate || "—"}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="rounded-lg border border-dashed border-slate-200 p-4 text-center">
-                    <p className="text-[12px] text-slate-400 italic">No successor tasks linked</p>
+                {/* Inline Quick-Add Successor Row */}
+                <form
+                  onSubmit={handleAddSuccInline}
+                  className="p-2.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center gap-2"
+                >
+                  <div className="flex-1 min-w-[150px]">
+                    <select
+                      id="drawer-link-successor-btn"
+                      value={newSuccSelectId}
+                      onChange={(e) => setNewSuccSelectId(e.target.value)}
+                      className="w-full text-xs bg-white border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-blue-500 text-slate-800"
+                    >
+                      <option value="">+ Link Successor Activity...</option>
+                      {candidateSuccessors.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.wbs ? `[${t.wbs}] ` : ""}{t.name.slice(0, 38)}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                )}
+                  <div className="w-24">
+                    <select
+                      value={newSuccType}
+                      onChange={(e) => setNewSuccType(e.target.value as DependencyType)}
+                      className="w-full text-xs bg-white border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-blue-500 text-slate-800"
+                    >
+                      <option value="FS">FS</option>
+                      <option value="SS">SS</option>
+                      <option value="FF">FF</option>
+                      <option value="SF">SF</option>
+                    </select>
+                  </div>
+                  <div className="w-16 flex items-center gap-1">
+                    <input
+                      type="number"
+                      value={newSuccLag}
+                      onChange={(e) => setNewSuccLag(parseInt(e.target.value, 10) || 0)}
+                      placeholder="0"
+                      className="w-full text-xs font-mono text-center bg-white border border-slate-200 rounded px-1.5 py-1.5 outline-none focus:border-blue-500 text-slate-800"
+                    />
+                    <span className="text-[11px] text-slate-400">d</span>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={!newSuccSelectId}
+                    className="inline-flex items-center gap-1 rounded bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-2.5 py-1.5 text-xs font-semibold shadow-xs transition-colors"
+                  >
+                    <Plus className="h-3 w-3" />
+                    <span>Link</span>
+                  </button>
+                </form>
               </div>
             </div>
           </div>
@@ -1738,6 +2359,255 @@ export function TaskDrawer() {
             </div>
           </div>
         )}
+
+        {activeTab === "integrations" && (
+          <div className="space-y-4 text-[12.5px]">
+            {/* Header / Subtitle */}
+            <div className="rounded-xl border border-indigo-200/80 bg-gradient-to-br from-indigo-50/70 via-white to-indigo-50/30 p-3.5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-indigo-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <Layers className="h-3.5 w-3.5 text-indigo-600" />
+                  Construction Module Integrations
+                </span>
+                <span className="rounded-full bg-indigo-100 border border-indigo-200 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                  Live Sync
+                </span>
+              </div>
+              <p className="text-[11.5px] text-slate-600 mt-1 leading-snug">
+                Unified bridge linking this activity to BOQ measurement, vendor trade subcontracts, site diary shift logs, and technical drawings.
+              </p>
+            </div>
+
+            {/* 1. Bill of Quantities (BOQ) & Cost Code */}
+            <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-2xs space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] font-bold text-slate-900 flex items-center gap-1.5">
+                  <Receipt className="h-3.5 w-3.5 text-blue-600" />
+                  Bill of Quantities (BOQ) & Measurement
+                </span>
+                <span className="text-[11px] font-mono text-slate-500">
+                  {currentTask.integrations?.boq?.code || currentTask.costCode || "BOQ-03-3100"}
+                </span>
+              </div>
+
+              <div className="rounded-lg bg-slate-50/80 border border-slate-200 p-2.5 space-y-2">
+                <div className="text-[12px] font-medium text-slate-800">
+                  {currentTask.integrations?.boq?.description || `${currentTask.name} - Measured Works`}
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-[11px]">
+                  <div>
+                    <span className="text-slate-400 block text-[10px]">Planned Qty</span>
+                    <span className="font-semibold text-slate-800">
+                      {currentTask.integrations?.boq?.quantity ?? 120} {currentTask.integrations?.boq?.unit || "m³"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px]">Unit Rate</span>
+                    <span className="font-semibold text-slate-800">
+                      £{currentTask.integrations?.boq?.rate ?? 340}/unit
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px]">Total Value</span>
+                    <span className="font-semibold text-slate-800">
+                      £{(currentTask.integrations?.boq?.totalValue ?? (currentTask.cost || 40800)).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Earned Value Progress Bar */}
+                <div className="pt-1">
+                  <div className="flex items-center justify-between text-[10.5px] mb-1">
+                    <span className="text-slate-500">
+                      Measured to Date: {currentTask.integrations?.boq?.measuredQuantityToDate ?? Math.round((currentTask.progress / 100) * 120)} m³
+                    </span>
+                    <span className="font-bold text-emerald-700">
+                      Earned: £{Math.round(((currentTask.integrations?.boq?.totalValue || currentTask.cost || 40800) * currentTask.progress) / 100).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                    <div
+                      className="bg-emerald-500 h-full rounded-full transition-all"
+                      style={{ width: `${Math.min(100, Math.max(0, currentTask.progress))}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Vendor Trade Contract & Application for Payment (AFP) */}
+            <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-2xs space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] font-bold text-slate-900 flex items-center gap-1.5">
+                  <Briefcase className="h-3.5 w-3.5 text-indigo-600" />
+                  Vendor Trade Contract & AFP
+                </span>
+                <span className="text-[10.5px] px-2 py-0.5 rounded-full font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  {currentTask.integrations?.vendorContract?.valuationStatus || "certified"}
+                </span>
+              </div>
+
+              <div className="rounded-lg bg-slate-50/80 border border-slate-200 p-2.5 space-y-2 text-[11px]">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Contractor:</span>
+                  <span className="font-semibold text-slate-900">
+                    {currentTask.integrations?.vendorContract?.subcontractorName || currentTask.subcontractor || currentTask.assignee || "Specialist Contractor Ltd"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Package Ref:</span>
+                  <span className="font-mono text-slate-700">
+                    {currentTask.integrations?.vendorContract?.contractPackageId || `SC-${currentTask.trade?.toUpperCase() || "TRADE"}-01`}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Contract Sum:</span>
+                  <span className="font-semibold text-slate-900">
+                    £{(currentTask.integrations?.vendorContract?.contractSum ?? (currentTask.cost ? currentTask.cost * 1.1 : 52000)).toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Retention Held (5%):</span>
+                  <span className="font-semibold text-amber-700">
+                    £{Math.round(((currentTask.integrations?.vendorContract?.contractSum ?? (currentTask.cost ? currentTask.cost * 1.1 : 52000)) * 0.05)).toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Claimed Progress:</span>
+                  <span className="font-bold text-blue-700">
+                    {currentTask.subcontractorClaimedProgress !== undefined ? `${currentTask.subcontractorClaimedProgress}%` : `${currentTask.progress}%`}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Daily Site Diary Logs */}
+            <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-2xs space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] font-bold text-slate-900 flex items-center gap-1.5">
+                  <HardHat className="h-3.5 w-3.5 text-amber-600" />
+                  Site Diary Shift Logs ({currentTask.integrations?.siteDiary?.length || 2})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newEntry = {
+                      id: "diary-" + Date.now(),
+                      date: new Date().toISOString().split("T")[0],
+                      shiftHours: 8.5,
+                      weather: "Dry / Overcast",
+                      temperatureC: 16,
+                      operativesCount: 6,
+                      notes: "Full team on site. Production matching programmed rate.",
+                      plantOnSite: ["Mobile Crane 50t", "Compressor"],
+                    };
+                    const existing = currentTask.integrations?.siteDiary || [];
+                    updateTaskIntegrations(currentTask.id, {
+                      siteDiary: [newEntry, ...existing],
+                    });
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-800"
+                >
+                  <Plus className="h-3 w-3" />
+                  <span>Log Shift</span>
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {(currentTask.integrations?.siteDiary || [
+                  {
+                    id: "diary-1",
+                    date: "2025-10-15",
+                    shiftHours: 8.5,
+                    weather: "Clear",
+                    temperatureC: 18,
+                    operativesCount: 8,
+                    notes: "Concrete pour sign-off complete. Shuttering struck safely.",
+                    plantOnSite: ["Concrete Pump 36m", "Tower Crane 1"],
+                  },
+                  {
+                    id: "diary-2",
+                    date: "2025-10-14",
+                    shiftHours: 8.0,
+                    weather: "Light Rain",
+                    temperatureC: 14,
+                    operativesCount: 7,
+                    notes: "Rebar fixing progressed on south bays. ITP pre-pour inspection passed.",
+                    plantOnSite: ["Telehandler"],
+                  },
+                ]).map((entry: any) => (
+                  <div key={entry.id} className="rounded-lg bg-slate-50 border border-slate-200 p-2.5 text-[11px] space-y-1.5">
+                    <div className="flex items-center justify-between font-semibold text-slate-800">
+                      <span>{entry.date} ({entry.shiftHours}h shift)</span>
+                      <span className="flex items-center gap-2 text-slate-500 text-[10px]">
+                        <span>{entry.operativesCount} operatives</span>
+                        <span>•</span>
+                        <span>{entry.temperatureC}°C {entry.weather}</span>
+                      </span>
+                    </div>
+                    <p className="text-slate-600 text-[11.5px] leading-snug">{entry.notes}</p>
+                    {entry.plantOnSite && entry.plantOnSite.length > 0 && (
+                      <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                        {entry.plantOnSite.map((p: string, idx: number) => (
+                          <span key={idx} className="rounded bg-white border border-slate-200 px-1.5 py-0.2 text-[9.5px] text-slate-600">
+                            {p}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 4. Technical Document Register & QA ITP */}
+            <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-2xs space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] font-bold text-slate-900 flex items-center gap-1.5">
+                  <FileText className="h-3.5 w-3.5 text-blue-600" />
+                  Technical Documents & Drawing Register
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  {currentTask.integrations?.documents?.length || 2} documents
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                {(currentTask.integrations?.documents || [
+                  {
+                    id: "doc-1",
+                    docNumber: `DRG-${currentTask.wbs || "STR"}-001`,
+                    title: `${currentTask.name} - General Arrangement & Details`,
+                    revision: "Rev C",
+                    type: "Drawing",
+                    status: "Approved",
+                  },
+                  {
+                    id: "doc-2",
+                    docNumber: `ITP-${currentTask.trade?.toUpperCase() || "STR"}-102`,
+                    title: `Inspection & Test Plan: ${currentTask.name}`,
+                    revision: "Rev 2",
+                    type: "ITP",
+                    status: "Approved",
+                  },
+                ]).map((doc: any) => (
+                  <div key={doc.id} className="flex items-center justify-between rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px]">
+                    <div>
+                      <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+                        <span className="font-mono text-blue-700">{doc.docNumber}</span>
+                        <span className="rounded bg-slate-200 px-1 text-[9.5px] font-bold text-slate-700">{doc.revision}</span>
+                      </div>
+                      <div className="text-slate-500 text-[10.5px] truncate max-w-[220px]">{doc.title}</div>
+                    </div>
+                    <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[9.5px] font-bold text-emerald-700">
+                      {doc.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Drawer Bottom Actions */}
@@ -1755,6 +2625,8 @@ export function TaskDrawer() {
           onClick={() => {
             setNewProgressValue(currentTask.progress);
             setNewStatusValue(currentTask.status);
+            setSubcontractorClaimValue(currentTask.subcontractorClaimedProgress ?? currentTask.progress);
+            setSubcontractorClaimNotes(currentTask.subcontractorClaimNotes ?? "");
             setProgressModalOpen(true);
           }}
           className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] font-medium text-slate-600 shadow-2xs hover:bg-slate-50 transition-colors"
@@ -1764,12 +2636,17 @@ export function TaskDrawer() {
         </button>
       </div>
 
-      {/* Modal: Update Progress */}
+      {/* Modal: Update Progress & Subcontractor Claim */}
       {progressModalOpen && (
         <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 shadow-xl space-y-4">
+          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h4 className="font-bold text-slate-900 text-base">Update Progress</h4>
+              <div>
+                <h4 className="font-bold text-slate-900 text-base">Progress & Valuation Review</h4>
+                <p className="text-[11px] text-slate-400">
+                  Certified progress vs subcontractor claim submissions
+                </p>
+              </div>
               <button
                 onClick={() => setProgressModalOpen(false)}
                 className="text-slate-400 hover:text-slate-600"
@@ -1778,16 +2655,30 @@ export function TaskDrawer() {
               </button>
             </div>
 
-            <div className="space-y-3 text-[13px]">
+            {/* Statutory Compliance Notice Banner */}
+            <div className="rounded-lg bg-amber-50/90 border border-amber-200/80 p-2.5 text-[11px] text-amber-900 leading-relaxed">
+              <span className="font-bold block text-amber-950 mb-0.5">
+                Statutory & Contractual Compliance Notice
+              </span>
+              Subcontractor progress submissions must be distinguished from verified physical progress. Site attendance or photos do not automatically constitute certified completion or contractual payment entitlement.
+            </div>
+
+            <div className="space-y-4 text-[13px]">
               <div>
-                <label className="text-slate-500 font-medium">Task</label>
-                <div className="font-semibold text-slate-800">{currentTask.name}</div>
+                <label className="text-slate-400 text-xs font-medium">Activity</label>
+                <div className="font-semibold text-slate-900">
+                  <span className="font-mono text-slate-400 mr-1.5">{currentTask.wbs || currentTask.id}</span>
+                  {currentTask.name}
+                </div>
               </div>
 
-              <div>
-                <div className="flex justify-between text-slate-600 mb-1">
-                  <span>Progress Percentage</span>
-                  <span className="font-bold text-blue-600">{newProgressValue}%</span>
+              {/* Section 1: Certified Physical Progress */}
+              <div className="rounded-lg border border-blue-100 bg-blue-50/30 p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-blue-900">
+                    Certified Physical Progress
+                  </span>
+                  <span className="font-bold text-blue-700 text-sm font-mono">{newProgressValue}%</span>
                 </div>
                 <input
                   type="range"
@@ -1798,35 +2689,80 @@ export function TaskDrawer() {
                   onChange={(e) => setNewProgressValue(Number(e.target.value))}
                   className="w-full accent-blue-600 cursor-pointer"
                 />
+
+                <div>
+                  <label className="text-slate-600 text-xs font-medium block mb-1">Status</label>
+                  <select
+                    value={newStatusValue}
+                    onChange={(e) => setNewStatusValue(e.target.value as TaskStatus)}
+                    className="w-full rounded-md border border-slate-300 bg-white p-2 text-xs text-slate-800 outline-none focus:border-blue-500"
+                  >
+                    <option value="not-started">Not Started</option>
+                    <option value="in-progress">In Progress</option>
+                    <option value="complete">Complete</option>
+                    <option value="blocked">Blocked</option>
+                  </select>
+                </div>
               </div>
 
-              <div>
-                <label className="text-slate-500 font-medium block mb-1">Status</label>
-                <select
-                  value={newStatusValue}
-                  onChange={(e) => setNewStatusValue(e.target.value as TaskStatus)}
-                  className="w-full rounded-lg border border-slate-200 p-2 text-[13px] text-slate-800"
-                >
-                  <option value="not-started">Not Started</option>
-                  <option value="in-progress">In Progress</option>
-                  <option value="complete">Complete</option>
-                  <option value="blocked">Blocked</option>
-                </select>
+              {/* Section 2: Subcontractor Claim Submission */}
+              <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                    Subcontractor Claim Submission
+                  </span>
+                  <span className="font-mono text-xs font-bold text-slate-700">
+                    {subcontractorClaimValue}% Claimed
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={subcontractorClaimValue}
+                    onChange={(e) => setSubcontractorClaimValue(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+                    className="w-20 rounded-md border border-slate-300 bg-white p-1.5 text-xs text-center font-mono font-bold text-slate-800 outline-none focus:border-blue-500"
+                  />
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    value={subcontractorClaimValue}
+                    onChange={(e) => setSubcontractorClaimValue(Number(e.target.value))}
+                    className="flex-1 accent-slate-600 cursor-pointer"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-slate-600 text-xs font-medium block mb-1">
+                    Claim Notes / Subcontractor Reference
+                  </label>
+                  <input
+                    type="text"
+                    value={subcontractorClaimNotes}
+                    onChange={(e) => setSubcontractorClaimNotes(e.target.value)}
+                    placeholder="e.g. AFP #4 submitted by Trade Contractor; pending site measure"
+                    className="w-full rounded-md border border-slate-300 bg-white p-2 text-xs text-slate-800 outline-none focus:border-blue-500"
+                  />
+                </div>
               </div>
             </div>
 
             <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
               <button
                 onClick={() => setProgressModalOpen(false)}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 text-[13px] text-slate-600 hover:bg-slate-50"
+                className="px-3.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-600 hover:bg-slate-50 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveProgress}
-                className="px-4 py-1.5 rounded-lg bg-blue-600 text-[13px] font-semibold text-white hover:bg-blue-700"
+                className="px-4 py-1.5 rounded-lg bg-blue-600 text-xs font-semibold text-white hover:bg-blue-700 shadow-xs transition-colors"
               >
-                Save Progress
+                Save & Record Valuation
               </button>
             </div>
           </div>

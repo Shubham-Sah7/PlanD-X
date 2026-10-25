@@ -27,3 +27,48 @@ export type User = Prisma.UserModel
  * 
  */
 export type Post = Prisma.PostModel
+/**
+ * Model Project
+ * 
+ */
+export type Project = Prisma.ProjectModel
+/**
+ * Model Programme
+ * 
+ */
+export type Programme = Prisma.ProgrammeModel
+/**
+ * Model Task
+ * 
+ */
+export type Task = Prisma.TaskModel
+/**
+ * Model Dependency
+ * 
+ */
+export type Dependency = Prisma.DependencyModel
+/**
+ * Model ResourceAssignment
+ * 
+ */
+export type ResourceAssignment = Prisma.ResourceAssignmentModel
+/**
+ * Model Baseline
+ * 
+ */
+export type Baseline = Prisma.BaselineModel
+/**
+ * Model ProgrammeRevision
+ * 
+ */
+export type ProgrammeRevision = Prisma.ProgrammeRevisionModel
+/**
+ * Model AuditEvent
+ * 
+ */
+export type AuditEvent = Prisma.AuditEventModel
+/**
+ * Model ProgrammeLock
+ * 
+ */
+export type ProgrammeLock = Prisma.ProgrammeLockModel

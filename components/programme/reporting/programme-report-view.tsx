@@ -20,6 +20,7 @@ import {
   Info,
 } from "lucide-react";
 import { useProgramme } from "@/lib/programme-context";
+import { EmptyProjectState } from "../empty-project-state";
 import {
   generateProgrammeReportData,
   exportProgrammeToCsv,
@@ -29,21 +30,26 @@ import {
 import type { ReportPeriod, LookaheadPeriod } from "@/lib/programme-types";
 
 export function ProgrammeReportView() {
-  const { state, projectCalendar, selectTask, openDrawer } = useProgramme();
+  const { state, projectCalendar, selectTask, openDrawer, currentProject, statusDate } = useProgramme();
 
   const [selectedPeriod, setSelectedPeriod] = useState<ReportPeriod>("lifecycle");
   const [selectedLookaheadHorizon, setSelectedLookaheadHorizon] = useState<LookaheadPeriod>("2-weeks");
 
+  // Empty state handling
+  if (state.tasks.length === 0) {
+    return <EmptyProjectState />;
+  }
+
   // Compile single-source report data
   const report = useMemo<ProgrammeReportData>(() => {
     return generateProgrammeReportData(state.tasks, projectCalendar, {
-      projectName: "Ormiston Rise — Building 2 & Unit 80",
-      projectLocation: "Siliguri, WB",
-      reportingDate: "2025-10-15",
+      projectName: currentProject?.name || "Ormiston Rise — Building 2 & Unit 80",
+      projectLocation: currentProject?.location || "Battersea, London",
+      reportingDate: statusDate || currentProject?.statusDate || "2025-10-15",
       period: selectedPeriod,
       lookaheadHorizon: selectedLookaheadHorizon,
     });
-  }, [state.tasks, projectCalendar, selectedPeriod, selectedLookaheadHorizon]);
+  }, [state.tasks, projectCalendar, selectedPeriod, selectedLookaheadHorizon, currentProject, statusDate]);
 
   // CSV export handler
   const handleExportCsv = () => {

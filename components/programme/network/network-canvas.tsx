@@ -120,28 +120,88 @@ export function NetworkCanvas() {
     "PRG-041": { x: 1010, y: 345 }, // Backfill (Not Started)
   };
 
-  // Build task layout map
+  // Build task layout map (supports both Battersea demo tasks and dynamic user project tasks)
   const layouts = useMemo<NodeLayout[]>(() => {
-    return Object.entries(nodeCoordinates).map(([id, coords]) => {
-      const task =
-        state.tasks.find((t) => t.id === id) ||
-        ({
-          id,
-          name: id,
-          status: "not-started",
-          duration: 5,
-          progress: 0,
-        } as ProgrammeTask);
+    if (state.tasks.length === 0) return [];
 
-      return {
-        id,
-        task,
-        x: coords.x,
-        y: coords.y,
-        width: NODE_WIDTH,
-        height: NODE_HEIGHT,
-      };
+    const hasPredefinedCoords = state.tasks.some((t) => nodeCoordinates[t.id]);
+    if (hasPredefinedCoords) {
+      return Object.entries(nodeCoordinates).map(([id, coords]) => {
+        const task =
+          state.tasks.find((t) => t.id === id) ||
+          ({
+            id,
+            name: id,
+            status: "not-started",
+            duration: 5,
+            progress: 0,
+          } as ProgrammeTask);
+
+        return {
+          id,
+          task,
+          x: coords.x,
+          y: coords.y,
+          width: NODE_WIDTH,
+          height: NODE_HEIGHT,
+        };
+      });
+    }
+
+    // Dynamic topological rank layout for any user project!
+    const nonPhaseTasks = state.tasks.filter((t) => t.level !== "phase");
+    const tasksToLayout = nonPhaseTasks.length > 0 ? nonPhaseTasks : state.tasks;
+    const taskMap = new Map<string, ProgrammeTask>();
+    tasksToLayout.forEach((t) => taskMap.set(t.id, t));
+
+    // Compute topological rank (distance from roots)
+    const rankMap = new Map<string, number>();
+    function getRank(id: string, visited = new Set<string>()): number {
+      if (rankMap.has(id)) return rankMap.get(id)!;
+      if (visited.has(id)) return 0;
+      visited.add(id);
+
+      const t = taskMap.get(id);
+      if (!t || !t.predecessors || t.predecessors.length === 0) {
+        rankMap.set(id, 0);
+        return 0;
+      }
+
+      let maxPredRank = 0;
+      for (const pId of t.predecessors) {
+        if (taskMap.has(pId)) {
+          maxPredRank = Math.max(maxPredRank, getRank(pId, new Set(visited)) + 1);
+        }
+      }
+      rankMap.set(id, maxPredRank);
+      return maxPredRank;
+    }
+
+    tasksToLayout.forEach((t) => getRank(t.id));
+
+    // Group tasks by rank into columns
+    const columns: ProgrammeTask[][] = [];
+    tasksToLayout.forEach((t) => {
+      const r = rankMap.get(t.id) || 0;
+      while (columns.length <= r) columns.push([]);
+      columns[r].push(t);
     });
+
+    const result: NodeLayout[] = [];
+    columns.forEach((colTasks, colIdx) => {
+      colTasks.forEach((task, rowIdx) => {
+        result.push({
+          id: task.id,
+          task,
+          x: 40 + colIdx * 270,
+          y: 120 + rowIdx * 135,
+          width: NODE_WIDTH,
+          height: NODE_HEIGHT,
+        });
+      });
+    });
+
+    return result;
   }, [state.tasks]);
 
   // Focus calculation

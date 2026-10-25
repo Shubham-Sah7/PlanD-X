@@ -7,6 +7,15 @@ import type {
   LookaheadPeriod,
   LookaheadReadiness,
   LookaheadTaskItem,
+  SchedulingWarning,
+  ResourceWorkloadSummary,
+  ResourceDailyWorkload,
+  BaselineSlot,
+  TaskType,
+  ProjectResource,
+  WeeklyWorkloadRecord,
+  MonthlyWorkloadRecord,
+  ResourceType,
 } from "./programme-types";
 
 export type WorkingWeekPreset = "5-day" | "6-day" | "7-day" | "custom";
@@ -25,6 +34,9 @@ export interface ProjectCalendar {
   workingDays: number[]; // 0 = Sun, 1 = Mon, ..., 6 = Sat
   workingHoursPerDay: number; // default 8
   holidays: ProjectHoliday[];
+  weekdayWorkingHours?: Record<number, number>; // e.g. { 1: 8, 2: 8, 3: 8, 4: 8, 5: 6 }
+  exceptionalWorkingDays?: Array<{ date: string; hours?: number; name?: string } | string>;
+  timezone?: string; // e.g. "Australia/Brisbane"
 }
 
 export const DEFAULT_HOLIDAYS: ProjectHoliday[] = [
@@ -102,6 +114,15 @@ export function isWorkingDay(dateOrStr: Date | string, calendar: ProjectCalendar
   const date = typeof dateOrStr === "string" ? parseIsoDate(dateOrStr) : dateOrStr;
   const isoStr = formatDateIso(date);
 
+  // Check exceptional working days (e.g. approved Saturday overtime)
+  if (
+    calendar.exceptionalWorkingDays?.some((e) =>
+      typeof e === "string" ? e === isoStr : e.date === isoStr
+    )
+  ) {
+    return true;
+  }
+
   // Check public holiday / custom non-working exception
   if (isHoliday(isoStr, calendar)) {
     return false;
@@ -109,11 +130,20 @@ export function isWorkingDay(dateOrStr: Date | string, calendar: ProjectCalendar
 
   // Check day of week (0 = Sun, 1 = Mon, ..., 6 = Sat)
   const dayOfWeek = date.getDay();
+
+  // If weekdayWorkingHours specified for this day and set to 0, it's non-working
+  if (calendar.weekdayWorkingHours && calendar.weekdayWorkingHours[dayOfWeek] === 0) {
+    return false;
+  }
+
   return calendar.workingDays.includes(dayOfWeek);
 }
 
 export function getNextWorkingDay(dateOrStr: Date | string, calendar: ProjectCalendar): Date {
   let curr = typeof dateOrStr === "string" ? parseIsoDate(dateOrStr) : new Date(dateOrStr.getTime());
+  if (isNaN(curr.getTime())) {
+    curr = new Date("2026-01-05T00:00:00Z");
+  }
   let maxLoop = 365;
   while (!isWorkingDay(curr, calendar) && maxLoop > 0) {
     curr.setDate(curr.getDate() + 1);
@@ -124,6 +154,9 @@ export function getNextWorkingDay(dateOrStr: Date | string, calendar: ProjectCal
 
 export function getPrevWorkingDay(dateOrStr: Date | string, calendar: ProjectCalendar): Date {
   let curr = typeof dateOrStr === "string" ? parseIsoDate(dateOrStr) : new Date(dateOrStr.getTime());
+  if (isNaN(curr.getTime())) {
+    curr = new Date("2026-01-05T00:00:00Z");
+  }
   let maxLoop = 365;
   while (!isWorkingDay(curr, calendar) && maxLoop > 0) {
     curr.setDate(curr.getDate() - 1);
@@ -142,15 +175,24 @@ export function getPrevWorkingDay(dateOrStr: Date | string, calendar: ProjectCal
 export function addWorkingDays(
   startDateOrStr: Date | string,
   workingDays: number,
-  calendar: ProjectCalendar
+  calendar: ProjectCalendar,
+  isElapsed?: boolean
 ): Date {
   if (workingDays <= 0) {
     return typeof startDateOrStr === "string" ? parseIsoDate(startDateOrStr) : new Date(startDateOrStr.getTime());
   }
 
+  // Elapsed duration: 24-hour calendar days (e.g. concrete cure time, maritime transit)
+  if (isElapsed) {
+    const base = typeof startDateOrStr === "string" ? parseIsoDate(startDateOrStr) : new Date(startDateOrStr.getTime());
+    const res = new Date(base.getTime());
+    res.setDate(res.getDate() + Math.max(0, Math.ceil(workingDays) - 1));
+    return res;
+  }
+
   // Ensure start date is on a valid working day
   let curr = getNextWorkingDay(startDateOrStr, calendar);
-  let daysRemaining = workingDays - 1;
+  let daysRemaining = Math.max(1, Math.ceil(workingDays)) - 1;
   let guard = 5000;
 
   while (daysRemaining > 0 && guard > 0) {
@@ -235,6 +277,561 @@ export interface ScheduleRecalculationResult {
   projectEndDate: string;
   criticalTaskCount: number;
   criticalPathTaskIds: string[];
+  warnings?: SchedulingWarning[];
+  resourceSummaries?: ResourceWorkloadSummary[];
+  hasCircularDependency?: boolean;
+  cycleDetails?: string;
+  hasImpossibleConditions?: boolean;
+}
+
+export interface RecalculateScheduleOptions {
+  scheduleFromStart?: boolean;
+  statusDate?: string | null;
+  checkResourceWorkloads?: boolean;
+  taskCalendars?: Map<string, ProjectCalendar> | Record<string, ProjectCalendar>;
+  targetFinishDate?: string | null;
+  nearCriticalThresholdDays?: number;
+}
+
+export interface DependencyCycleCheck {
+  hasCycle: boolean;
+  cyclePath?: string[];
+  reason?: string;
+  explanation?: string;
+}
+
+/**
+ * Detects whether adding or editing a dependency edge (predId -> succId) creates a circular dependency loop.
+ * Explains clearly why a task cannot be scheduled as expected with the exact cycle path.
+ */
+export function detectDependencyCycle(
+  tasks: ProgrammeTask[],
+  proposedPredId: string,
+  proposedSuccId: string
+): DependencyCycleCheck {
+  if (proposedPredId === proposedSuccId) {
+    const task = tasks.find((t) => t.id === proposedPredId);
+    const name = task?.name || proposedPredId;
+    return {
+      hasCycle: true,
+      cyclePath: [proposedPredId, proposedPredId],
+      reason: `Task '${name}' cannot depend on itself (circular reference).`,
+    };
+  }
+
+  const taskMap = new Map<string, ProgrammeTask>();
+  const successorMap = new Map<string, string[]>();
+
+  for (const t of tasks) {
+    taskMap.set(t.id, t);
+    successorMap.set(t.id, []);
+  }
+
+  for (const t of tasks) {
+    const preds = extractTaskPredecessors(t);
+    for (const p of preds) {
+      if (successorMap.has(p.id)) {
+        successorMap.get(p.id)!.push(t.id);
+      }
+    }
+  }
+
+  // BFS check: can we reach proposedPredId from proposedSuccId?
+  const queue: string[] = [proposedSuccId];
+  const visited = new Set<string>([proposedSuccId]);
+  const parentMap = new Map<string, string>();
+
+  let found = false;
+  while (queue.length > 0) {
+    const curr = queue.shift()!;
+    if (curr === proposedPredId) {
+      found = true;
+      break;
+    }
+    for (const next of successorMap.get(curr) || []) {
+      if (!visited.has(next)) {
+        visited.add(next);
+        parentMap.set(next, curr);
+        queue.push(next);
+      }
+    }
+  }
+
+  if (found) {
+    // Reconstruct cycle path
+    const path: string[] = [proposedPredId];
+    let step = proposedPredId;
+    while (step !== proposedSuccId && parentMap.has(step)) {
+      step = parentMap.get(step)!;
+      path.unshift(step);
+    }
+    path.unshift(proposedPredId);
+
+    const pathNames = path.map((id) => `'${taskMap.get(id)?.name || id}'`).join(" ➔ ");
+    const msg = `Circular dependency detected: ${pathNames}. Adding this predecessor would create an impossible schedule loop.`;
+    return {
+      hasCycle: true,
+      cyclePath: path,
+      reason: msg,
+      explanation: msg,
+    };
+  }
+
+  return { hasCycle: false };
+}
+
+/**
+ * Task type behavior and effort-driven scheduling calculation:
+ * Formula: Work = Duration * Assignment Units * Working Hours Per Day
+ * - fixed-duration: Duration constant; changing units alters work; changing work alters units.
+ * - fixed-work: Work constant; changing duration alters units; changing units alters duration.
+ * - fixed-units: Units constant; changing duration alters work; changing work alters duration.
+ * - effort-driven: When assignments change, work is preserved and duration adjusts.
+ */
+export function calculateTaskWorkUnits(
+  task: ProgrammeTask,
+  changedField: "duration" | "workHours" | "assignmentUnits",
+  newValue: number,
+  calendar: ProjectCalendar
+): { duration: number; workHours: number; assignmentUnits: number } {
+  const hoursPerDay = calendar.workingHoursPerDay || 8;
+  const taskType: TaskType = task.taskType || "fixed-duration";
+  const effortDriven = Boolean(task.effortDriven);
+
+  let duration = task.duration || 1;
+  let assignmentUnits = typeof task.assignmentUnits === "number" ? task.assignmentUnits : 1.0;
+  let workHours = typeof task.workHours === "number" ? task.workHours : duration * assignmentUnits * hoursPerDay;
+
+  if (changedField === "duration") {
+    duration = Math.max(0, newValue);
+    if (taskType === "fixed-duration") {
+      workHours = Math.round(duration * assignmentUnits * hoursPerDay);
+    } else if (taskType === "fixed-work") {
+      if (duration > 0) {
+        assignmentUnits = Math.round((workHours / (duration * hoursPerDay)) * 100) / 100;
+      }
+    } else if (taskType === "fixed-units") {
+      workHours = Math.round(duration * assignmentUnits * hoursPerDay);
+    }
+  } else if (changedField === "workHours") {
+    workHours = Math.max(0, newValue);
+    if (taskType === "fixed-duration") {
+      if (duration > 0) {
+        assignmentUnits = Math.round((workHours / (duration * hoursPerDay)) * 100) / 100;
+      }
+    } else if (taskType === "fixed-work") {
+      if (assignmentUnits > 0) {
+        duration = Math.max(1, Math.round(workHours / (assignmentUnits * hoursPerDay)));
+      }
+    } else if (taskType === "fixed-units") {
+      if (assignmentUnits > 0) {
+        duration = Math.max(1, Math.round(workHours / (assignmentUnits * hoursPerDay)));
+      }
+    }
+  } else if (changedField === "assignmentUnits") {
+    assignmentUnits = Math.max(0.1, Math.round(newValue * 100) / 100);
+    if (effortDriven || taskType === "fixed-work") {
+      if (assignmentUnits > 0) {
+        duration = Math.max(1, Math.round(workHours / (assignmentUnits * hoursPerDay)));
+      }
+    } else if (taskType === "fixed-duration") {
+      workHours = Math.round(duration * assignmentUnits * hoursPerDay);
+    } else if (taskType === "fixed-units") {
+      workHours = Math.round(duration * assignmentUnits * hoursPerDay);
+    }
+  }
+
+  return { duration, workHours, assignmentUnits };
+}
+
+/**
+ * Progress and status-date management:
+ * - Calculates remaining duration and remaining work
+ * - Detects delayed incomplete work on/before status date
+ * - Forecasts finish date by scheduling remaining work forward from status date
+ */
+export function evaluateStatusDateAndProgress(
+  task: ProgrammeTask,
+  statusDate: string,
+  calendar: ProjectCalendar
+): {
+  remainingDuration: number;
+  remainingWorkHours: number;
+  isDelayed: boolean;
+  forecastFinish?: string;
+} {
+  const progress = Math.min(100, Math.max(0, task.progress || 0));
+  const totalDuration = task.duration || 1;
+  const totalWork = typeof task.workHours === "number" ? task.workHours : totalDuration * (calendar.workingHoursPerDay || 8);
+
+  const remainingDuration = progress >= 100 ? 0 : Math.max(1, Math.round(totalDuration * (1 - progress / 100)));
+  const remainingWorkHours = progress >= 100 ? 0 : Math.round(totalWork * (1 - progress / 100));
+
+  let isDelayed = false;
+  let forecastFinish: string | undefined = undefined;
+
+  if (progress < 100 && task.endDate) {
+    const endT = parseIsoDate(task.endDate).getTime();
+    const statusT = parseIsoDate(statusDate).getTime();
+
+    // If task was scheduled to complete on or before status date but is incomplete
+    if (endT <= statusT) {
+      isDelayed = true;
+      const forecastEnd = addWorkingDays(statusDate, remainingDuration, calendar);
+      forecastFinish = formatDateIso(forecastEnd);
+    }
+  }
+
+  return {
+    remainingDuration,
+    remainingWorkHours,
+    isDelayed,
+    forecastFinish,
+  };
+}
+
+/**
+ * Helper to compute ISO week number and start/end dates for a given date.
+ */
+function getIsoWeekInfo(date: Date): { weekNumber: number; weekLabel: string; startDate: string; endDate: string } {
+  const d = new Date(date.getTime());
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+  const yearStart = new Date(d.getFullYear(), 0, 1);
+  const weekNumber = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+
+  // Find Monday of this week
+  const mon = new Date(date.getTime());
+  const day = mon.getDay() || 7;
+  mon.setDate(mon.getDate() - day + 1);
+
+  // Find Sunday of this week
+  const sun = new Date(mon.getTime());
+  sun.setDate(sun.getDate() + 6);
+
+  const startIso = formatDateIso(mon);
+  const endIso = formatDateIso(sun);
+
+  return {
+    weekNumber,
+    weekLabel: `W${weekNumber} (${mon.toLocaleDateString("en-GB", { day: "numeric", month: "short" })})`,
+    startDate: startIso,
+    endDate: endIso,
+  };
+}
+
+/**
+ * Resource and workload management:
+ * Evaluates resource availability, assignment units, daily/weekly/monthly demand,
+ * rate-based costs, and over-allocation warnings across Labour and Equipment.
+ */
+export function calculateResourceWorkloads(
+  tasks: ProgrammeTask[],
+  calendar: ProjectCalendar,
+  projectResources?: ProjectResource[]
+): {
+  resourceSummaries: ResourceWorkloadSummary[];
+  overallocatedTaskIds: Set<string>;
+  peakAllocationByTask: Map<string, number>;
+} {
+  const resourceDefMap = new Map<string, ProjectResource>();
+  if (projectResources) {
+    projectResources.forEach((r) => {
+      resourceDefMap.set(r.id, r);
+      resourceDefMap.set(r.name.toLowerCase().trim(), r);
+    });
+  }
+
+  const resourceMap = new Map<
+    string,
+    {
+      id?: string;
+      name: string;
+      initials: string;
+      trade?: string;
+      resourceType: ResourceType;
+      maxCapacityUnits: number;
+      standardRate?: number;
+      isVerifiedVendor: boolean;
+      vendorRecordId?: string;
+      assignedTaskIds: Set<string>;
+      dailyUnits: Map<string, { units: number; hours: number; taskIds: string[] }>;
+    }
+  >();
+
+  const leafTasks = tasks.filter(
+    (t) => t.level !== "phase" && t.level !== "programme" && (!t.children || t.children.length === 0)
+  );
+
+  for (const t of leafTasks) {
+    if (!t.startDate || !t.endDate) continue;
+
+    // Check if task has structured multi-resource assignments
+    const assignments = t.assignments && t.assignments.length > 0
+      ? t.assignments
+      : null;
+
+    if (assignments) {
+      for (const asgn of assignments) {
+        const resName = asgn.resourceName;
+        if (!resName) continue;
+
+        if (!resourceMap.has(resName)) {
+          const matchedDef =
+            resourceDefMap.get(asgn.resourceId) ||
+            resourceDefMap.get(resName.toLowerCase().trim());
+
+          const initials =
+            matchedDef?.initials ||
+            resName
+              .split(" ")
+              .map((w: string) => w[0])
+              .join("")
+              .slice(0, 3)
+              .toUpperCase();
+
+          resourceMap.set(resName, {
+            id: asgn.resourceId || matchedDef?.id,
+            name: resName,
+            initials,
+            trade: matchedDef?.trade,
+            resourceType: asgn.resourceType || matchedDef?.type || "work",
+            maxCapacityUnits: matchedDef?.maxUnits || 1.0,
+            standardRate: asgn.standardRate ?? matchedDef?.standardRate,
+            isVerifiedVendor: Boolean(matchedDef?.isVerifiedVendor),
+            vendorRecordId: matchedDef?.vendorRecordId,
+            assignedTaskIds: new Set(),
+            dailyUnits: new Map(),
+          });
+        }
+
+        const resEntry = resourceMap.get(resName)!;
+        resEntry.assignedTaskIds.add(t.id);
+
+        const taskUnits = typeof asgn.units === "number" ? asgn.units : 1.0;
+        const hoursPerDay = (calendar.workingHoursPerDay || 8) * taskUnits;
+
+        let curr = parseIsoDate(t.startDate);
+        const end = parseIsoDate(t.endDate);
+
+        let guard = 500;
+        while (curr.getTime() <= end.getTime() && guard > 0) {
+          guard--;
+          if (isWorkingDay(curr, calendar)) {
+            const dStr = formatDateIso(curr);
+            const dayRecord = resEntry.dailyUnits.get(dStr) || { units: 0, hours: 0, taskIds: [] };
+            dayRecord.units += taskUnits;
+            dayRecord.hours += hoursPerDay;
+            if (!dayRecord.taskIds.includes(t.id)) dayRecord.taskIds.push(t.id);
+            resEntry.dailyUnits.set(dStr, dayRecord);
+          }
+          curr.setDate(curr.getDate() + 1);
+        }
+      }
+    } else {
+      // Fallback: Use single assignee, byWhom, or trade
+      const assigneeObj = t.assignee as { name?: string } | null;
+      const resName =
+        (typeof t.assignee === "string" ? t.assignee : assigneeObj?.name) ||
+        t.byWhom ||
+        (typeof t.trade === "string" ? t.trade : t.tradeText);
+
+      if (!resName) continue;
+
+      if (!resourceMap.has(resName)) {
+        const matchedDef = resourceDefMap.get(resName.toLowerCase().trim());
+        const initials =
+          t.assigneeInitials ||
+          matchedDef?.initials ||
+          resName
+            .split(" ")
+            .map((w: string) => w[0])
+            .join("")
+            .slice(0, 3)
+            .toUpperCase();
+
+        resourceMap.set(resName, {
+          id: matchedDef?.id,
+          name: resName,
+          initials,
+          trade: (typeof t.trade === "string" ? t.trade : t.tradeText) || matchedDef?.trade || undefined,
+          resourceType: matchedDef?.type || "work",
+          maxCapacityUnits: matchedDef?.maxUnits || 1.0,
+          standardRate: matchedDef?.standardRate,
+          isVerifiedVendor: Boolean(matchedDef?.isVerifiedVendor),
+          vendorRecordId: matchedDef?.vendorRecordId,
+          assignedTaskIds: new Set(),
+          dailyUnits: new Map(),
+        });
+      }
+
+      const resEntry = resourceMap.get(resName)!;
+      resEntry.assignedTaskIds.add(t.id);
+
+      const taskUnits = typeof t.assignmentUnits === "number" ? t.assignmentUnits : 1.0;
+      const hoursPerDay = (calendar.workingHoursPerDay || 8) * taskUnits;
+
+      let curr = parseIsoDate(t.startDate);
+      const end = parseIsoDate(t.endDate);
+
+      let guard = 500;
+      while (curr.getTime() <= end.getTime() && guard > 0) {
+        guard--;
+        if (isWorkingDay(curr, calendar)) {
+          const dStr = formatDateIso(curr);
+          const dayRecord = resEntry.dailyUnits.get(dStr) || { units: 0, hours: 0, taskIds: [] };
+          dayRecord.units += taskUnits;
+          dayRecord.hours += hoursPerDay;
+          if (!dayRecord.taskIds.includes(t.id)) dayRecord.taskIds.push(t.id);
+          resEntry.dailyUnits.set(dStr, dayRecord);
+        }
+        curr.setDate(curr.getDate() + 1);
+      }
+    }
+  }
+
+  const overallocatedTaskIds = new Set<string>();
+  const peakAllocationByTask = new Map<string, number>();
+  const summaries: ResourceWorkloadSummary[] = [];
+
+  for (const [resName, data] of resourceMap.entries()) {
+    let maxDailyUnits = 0;
+    let overallocatedDaysCount = 0;
+    let totalPlannedHours = 0;
+
+    const dailyWorkloads: Record<string, ResourceDailyWorkload> = {};
+    const weeklyMap = new Map<string, { weekInfo: any; hours: number; peakUnits: number; taskIds: Set<string>; isOver: boolean }>();
+    const monthlyMap = new Map<string, { monthStr: string; monthLabel: string; hours: number; peakUnits: number; taskIds: Set<string>; isOver: boolean }>();
+
+    const capacityLimit = data.maxCapacityUnits || 1.0;
+
+    for (const [dStr, dayData] of data.dailyUnits.entries()) {
+      const isOver = dayData.units > (capacityLimit + 0.001); // Exceeds individual resource capacity!
+      if (dayData.units > maxDailyUnits) {
+        maxDailyUnits = dayData.units;
+      }
+      totalPlannedHours += dayData.hours;
+
+      if (isOver) {
+        overallocatedDaysCount++;
+        for (const tid of dayData.taskIds) {
+          overallocatedTaskIds.add(tid);
+          const currentPeak = peakAllocationByTask.get(tid) || 0;
+          if (dayData.units > currentPeak) {
+            peakAllocationByTask.set(tid, dayData.units);
+          }
+        }
+      }
+
+      dailyWorkloads[dStr] = {
+        date: dStr,
+        units: Math.round(dayData.units * 100) / 100,
+        hours: Math.round(dayData.hours * 10) / 10,
+        taskIds: dayData.taskIds,
+        isOverallocated: isOver,
+      };
+
+      // ── Weekly Aggregation ──
+      const curDate = parseIsoDate(dStr);
+      const weekInfo = getIsoWeekInfo(curDate);
+      const weekKey = `${weekInfo.weekNumber}-${weekInfo.startDate}`;
+      const existingWeek = weeklyMap.get(weekKey) || {
+        weekInfo,
+        hours: 0,
+        peakUnits: 0,
+        taskIds: new Set<string>(),
+        isOver: false,
+      };
+      existingWeek.hours += dayData.hours;
+      if (dayData.units > existingWeek.peakUnits) existingWeek.peakUnits = dayData.units;
+      if (isOver) existingWeek.isOver = true;
+      dayData.taskIds.forEach((id) => existingWeek.taskIds.add(id));
+      weeklyMap.set(weekKey, existingWeek);
+
+      // ── Monthly Aggregation ──
+      const monthStr = dStr.slice(0, 7); // YYYY-MM
+      const monthLabel = curDate.toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+      const existingMonth = monthlyMap.get(monthStr) || {
+        monthStr,
+        monthLabel,
+        hours: 0,
+        peakUnits: 0,
+        taskIds: new Set<string>(),
+        isOver: false,
+      };
+      existingMonth.hours += dayData.hours;
+      if (dayData.units > existingMonth.peakUnits) existingMonth.peakUnits = dayData.units;
+      if (isOver) existingMonth.isOver = true;
+      dayData.taskIds.forEach((id) => existingMonth.taskIds.add(id));
+      monthlyMap.set(monthStr, existingMonth);
+    }
+
+    // Convert Weekly Map
+    const weeklyWorkloads: Record<string, WeeklyWorkloadRecord> = {};
+    for (const [key, wData] of weeklyMap.entries()) {
+      const weeklyWorkingDays = 5; // standard 5 days * 8h = 40h per unit
+      const capacityHours = Math.round(weeklyWorkingDays * (calendar.workingHoursPerDay || 8) * capacityLimit);
+      weeklyWorkloads[key] = {
+        weekNumber: wData.weekInfo.weekNumber,
+        weekLabel: wData.weekInfo.weekLabel,
+        startDate: wData.weekInfo.startDate,
+        endDate: wData.weekInfo.endDate,
+        totalHours: Math.round(wData.hours * 10) / 10,
+        capacityHours,
+        peakUnits: Math.round(wData.peakUnits * 100) / 100,
+        isOverallocated: wData.isOver,
+        taskIds: Array.from(wData.taskIds),
+      };
+    }
+
+    // Convert Monthly Map
+    const monthlyWorkloads: Record<string, MonthlyWorkloadRecord> = {};
+    for (const [key, mData] of monthlyMap.entries()) {
+      const monthlyWorkingDays = 21.67; // average working days in month
+      const capacityHours = Math.round(monthlyWorkingDays * (calendar.workingHoursPerDay || 8) * capacityLimit);
+      monthlyWorkloads[key] = {
+        monthStr: mData.monthStr,
+        monthLabel: mData.monthLabel,
+        totalHours: Math.round(mData.hours * 10) / 10,
+        capacityHours,
+        peakUnits: Math.round(mData.peakUnits * 100) / 100,
+        isOverallocated: mData.isOver,
+        taskIds: Array.from(mData.taskIds),
+      };
+    }
+
+    const rate = data.standardRate || 0;
+    const totalCost = Math.round(totalPlannedHours * rate * 100) / 100;
+
+    summaries.push({
+      resourceId: data.id,
+      resourceName: resName,
+      resourceInitials: data.initials,
+      resourceType: data.resourceType,
+      trade: data.trade,
+      maxDailyUnits: Math.round(maxDailyUnits * 100) / 100,
+      maxCapacityUnits: capacityLimit,
+      overallocatedDaysCount,
+      totalPlannedHours: Math.round(totalPlannedHours * 10) / 10,
+      totalActualHours: 0,
+      totalRemainingHours: Math.round(totalPlannedHours * 10) / 10,
+      totalCost,
+      assignedTaskCount: data.assignedTaskIds.size,
+      assignedTaskIds: Array.from(data.assignedTaskIds),
+      isVerifiedVendor: data.isVerifiedVendor,
+      vendorRecordId: data.vendorRecordId,
+      standardRate: rate,
+      dailyWorkloads,
+      weeklyWorkloads,
+      monthlyWorkloads,
+    });
+  }
+
+  return {
+    resourceSummaries: summaries,
+    overallocatedTaskIds,
+    peakAllocationByTask,
+  };
 }
 
 /**
@@ -298,7 +895,8 @@ function extractTaskPredecessors(task: ProgrammeTask): { id: string; type: strin
  */
 export function recalculateSchedule(
   tasks: ProgrammeTask[],
-  calendar: ProjectCalendar
+  calendar: ProjectCalendar,
+  options?: RecalculateScheduleOptions
 ): ScheduleRecalculationResult {
   const taskMap = new Map<string, ProgrammeTask>();
   for (const t of tasks) {
@@ -306,11 +904,33 @@ export function recalculateSchedule(
   }
 
   let changeCount = 0;
+  const warnings: SchedulingWarning[] = [];
+
+  // Helper to resolve task-specific calendar or continuous 7-day elapsed calendar
+  const getTaskCalendar = (t: ProgrammeTask): ProjectCalendar => {
+    if (t.isElapsedDuration) {
+      return CONTINUOUS_7_DAY_CALENDAR;
+    }
+    const calId = t.calendarId || t.calendarUid;
+    if (calId && options?.taskCalendars) {
+      if (options.taskCalendars instanceof Map) {
+        const match = options.taskCalendars.get(calId);
+        if (match) return match;
+      } else if (typeof options.taskCalendars === "object") {
+        const match = (options.taskCalendars as Record<string, ProjectCalendar>)[calId];
+        if (match) return match;
+      }
+    }
+    if (calId === "cal-7day" || calId === "continuous-7day") return CONTINUOUS_7_DAY_CALENDAR;
+    if (calId === "cal-6day" || calId === "construction-6day") return CONSTRUCTION_6_DAY_CALENDAR;
+    if (calId === "cal-5day" || calId === "standard-5day") return STANDARD_5_DAY_CALENDAR;
+    return calendar;
+  };
 
   // Helper to determine if a task is a summary container
   const allTasksList = Array.from(taskMap.values());
   const isSummaryContainer = (t: ProgrammeTask): boolean => {
-    if (t.level === "phase" || t.level === "programme") return true;
+    if (t.level === "phase" || t.level === "programme" || t.summary === true) return true;
     if (t.children && t.children.length > 0) return true;
     return allTasksList.some((child) => child.parentId === t.id);
   };
@@ -354,9 +974,23 @@ export function recalculateSchedule(
     }
   }
 
-  // Include any remaining leaf tasks in case of cycles so no task is omitted
-  for (const t of leafTasks) {
-    if (!evalOrder.includes(t.id)) {
+  let hasCircularDependency = false;
+  let cycleDetails: string | undefined = undefined;
+
+  // If some leaf tasks were not resolved by topological sort, a circular dependency exists
+  if (evalOrder.length < leafTasks.length) {
+    hasCircularDependency = true;
+    const unresolved = leafTasks.filter((t) => !evalOrder.includes(t.id));
+    cycleDetails = `Circular dependency detected involving task(s): ${unresolved.map((u) => `'${u.name || u.id}'`).join(", ")}.`;
+    warnings.push({
+      taskId: unresolved[0]?.id || "cycle-detected",
+      taskName: unresolved[0]?.name || "Schedule Loop",
+      type: "cycle",
+      severity: "critical",
+      message: cycleDetails,
+    });
+    // Include remaining tasks in best-effort order so they can still be scheduled
+    for (const t of unresolved) {
       evalOrder.push(t.id);
     }
   }
@@ -366,77 +1000,261 @@ export function recalculateSchedule(
     const task = taskMap.get(taskId);
     if (!task) continue;
 
+    const taskCal = getTaskCalendar(task);
+
+    if (typeof task.duration !== "number" || task.duration < 0 || isNaN(task.duration)) {
+      task.duration = Math.max(0, task.duration || 0);
+    }
+
     const origStart = task.startDate;
     const origEnd = task.endDate;
 
     const preds = extractTaskPredecessors(task);
-    if (preds.length > 0) {
-      let earliestConstraint: Date | null = null;
+    let earliestConstraint: Date | null = null;
+    task.drivingPredecessorId = undefined;
 
+    if (preds.length > 0) {
       for (const p of preds) {
         const pred = taskMap.get(p.id);
         if (pred && pred.startDate && pred.endDate) {
           const predStart = parseIsoDate(pred.startDate);
           const predFinish = parseIsoDate(pred.endDate);
+          const predCal = getTaskCalendar(pred);
           let requiredStart: Date;
 
           if (p.type === "SS") {
             // Start-to-Start: Successor starts in relation to Predecessor's start + lag
-            requiredStart = shiftByWorkingDays(predStart, p.lag, calendar);
+            requiredStart = shiftByWorkingDays(predStart, p.lag, predCal);
           } else if (p.type === "FF") {
             // Finish-to-Finish: Successor finishes in relation to Predecessor's finish + lag
-            const requiredFinish = shiftByWorkingDays(predFinish, p.lag, calendar);
+            const requiredFinish = shiftByWorkingDays(predFinish, p.lag, predCal);
             const durOffset = task.duration > 1 ? -(task.duration - 1) : 0;
-            requiredStart = shiftByWorkingDays(requiredFinish, durOffset, calendar);
+            requiredStart = shiftByWorkingDays(requiredFinish, durOffset, taskCal);
           } else if (p.type === "SF") {
             // Start-to-Finish: Successor finishes in relation to Predecessor's start + lag
-            const requiredFinish = shiftByWorkingDays(predStart, p.lag, calendar);
+            const requiredFinish = shiftByWorkingDays(predStart, p.lag, predCal);
             const durOffset = task.duration > 1 ? -(task.duration - 1) : 0;
-            requiredStart = shiftByWorkingDays(requiredFinish, durOffset, calendar);
+            requiredStart = shiftByWorkingDays(requiredFinish, durOffset, taskCal);
           } else {
-            // Finish-to-Start (FS, Default): Successor starts after Predecessor finishes + lag
-            requiredStart = shiftByWorkingDays(predFinish, 1 + p.lag, calendar);
+            // Finish-to-Start (FS, Default):
+            // In MS Project, if predecessor is a milestone (duration 0), successor with 0 lag starts on the same day
+            if (pred.isMilestone || pred.duration === 0) {
+              requiredStart = shiftByWorkingDays(predFinish, p.lag, taskCal);
+            } else {
+              // Advances to the next calendar day after predFinish, then finds the first working day on successor's calendar
+              const nextCalDay = new Date(predFinish.getTime());
+              nextCalDay.setDate(nextCalDay.getDate() + 1);
+              const firstWorking = getNextWorkingDay(nextCalDay, taskCal);
+              requiredStart = p.lag === 0 ? firstWorking : shiftByWorkingDays(firstWorking, p.lag, taskCal);
+            }
+          }
+
+          // Ensure requiredStart is on a valid working day for this task's calendar
+          if (!isWorkingDay(requiredStart, taskCal)) {
+            requiredStart = getNextWorkingDay(requiredStart, taskCal);
           }
 
           if (!earliestConstraint || requiredStart.getTime() > earliestConstraint.getTime()) {
             earliestConstraint = requiredStart;
+            task.drivingPredecessorId = p.id;
           }
         }
       }
-
-      if (earliestConstraint) {
-        if (task.manualStartDate) {
-          const manualDate = getNextWorkingDay(task.manualStartDate, calendar);
-          const effectiveDate =
-            manualDate.getTime() > earliestConstraint.getTime() ? manualDate : earliestConstraint;
-          task.startDate = formatDateIso(effectiveDate);
-          task.displayStart = formatDisplayDate(effectiveDate);
-        } else {
-          task.startDate = formatDateIso(earliestConstraint);
-          task.displayStart = formatDisplayDate(earliestConstraint);
-        }
-      } else {
-        const candidate = task.manualStartDate || task.startDate;
-        const snappedStart = getNextWorkingDay(candidate, calendar);
-        task.startDate = formatDateIso(snappedStart);
-        task.displayStart = formatDisplayDate(snappedStart);
-      }
-    } else {
-      // Standalone tasks: snap to next working day according to calendar
-      const candidate = task.manualStartDate || task.startDate;
-      const snappedStart = getNextWorkingDay(candidate, calendar);
-      task.startDate = formatDateIso(snappedStart);
-      task.displayStart = formatDisplayDate(snappedStart);
     }
 
-    // Calculate endDate from startDate + duration in working days
-    if (task.isMilestone || task.duration === 0) {
-      task.endDate = task.startDate;
-      task.displayEnd = task.displayStart;
+    // Determine Early Start (CPM unconstrained earliest start date)
+    let earlyStartDate: Date;
+    if (earliestConstraint) {
+      earlyStartDate = earliestConstraint;
     } else {
-      const computedEnd = addWorkingDays(task.startDate, task.duration, calendar);
-      task.endDate = formatDateIso(computedEnd);
-      task.displayEnd = formatDisplayDate(computedEnd);
+      const candidate = task.manualStartDate || task.startDate || "2026-01-05";
+      earlyStartDate = getNextWorkingDay(candidate, taskCal);
+    }
+
+    task.earlyStart = formatDateIso(earlyStartDate);
+    if (task.isMilestone || task.duration === 0) {
+      task.earlyFinish = task.earlyStart;
+    } else {
+      const earlyEnd = addWorkingDays(earlyStartDate, task.duration, taskCal, Boolean(task.isElapsedDuration));
+      task.earlyFinish = formatDateIso(earlyEnd);
+    }
+
+    // Apply Actual Dates or Scheduling Mode (Manual vs Auto)
+    if (task.actualStart) {
+      task.startDate = task.actualStart;
+      task.displayStart = formatDisplayDate(task.actualStart);
+    } else if (task.schedulingMode === "manual") {
+      // Manual scheduling mode: preserves user-entered startDate and endDate
+      const manualStart = task.manualStartDate || task.startDate;
+      if (manualStart) {
+        task.startDate = manualStart;
+        task.displayStart = formatDisplayDate(manualStart);
+      }
+      // Flag dependency conflict if predecessors force start later than manual start
+      if (earliestConstraint && parseIsoDate(task.startDate).getTime() < earliestConstraint.getTime()) {
+        task.constraintConflict = true;
+        task.constraintConflictReason = `Manually scheduled task starts on ${task.startDate}, earlier than predecessor completion date ${task.earlyStart}.`;
+        warnings.push({
+          taskId: task.id,
+          taskName: task.name,
+          type: "dependency-conflict",
+          severity: "warning",
+          message: `Manual task '${task.name}' is scheduled to start on ${task.startDate}, but predecessors require start on or after ${task.earlyStart}.`,
+        });
+      }
+    } else {
+      // Auto scheduling mode: starts on CPM early start unless pinned by constraint
+      task.startDate = task.earlyStart;
+      task.displayStart = formatDisplayDate(earlyStartDate);
+    }
+
+    // Constraint evaluation
+    const cType = typeof task.constraintType === "string" ? task.constraintType.toUpperCase() : task.constraintType;
+    const cDateStr = task.constraintDate;
+    if (!task.constraintConflict) {
+      task.constraintConflict = false;
+      task.constraintConflictReason = undefined;
+    }
+
+    if (cDateStr && task.schedulingMode !== "manual") {
+      const cDate = parseIsoDate(cDateStr);
+      // 2: MSO (Must Start On)
+      if (cType === 2 || cType === "MSO") {
+        if (earliestConstraint && earliestConstraint.getTime() > cDate.getTime()) {
+          task.constraintConflict = true;
+          task.constraintConflictReason = `Predecessors require start on or after ${formatDateIso(earliestConstraint)}, conflicting with Must Start On ${cDateStr}.`;
+          warnings.push({
+            taskId: task.id,
+            taskName: task.name,
+            type: "constraint-conflict",
+            severity: "warning",
+            message: task.constraintConflictReason,
+          });
+        }
+        task.startDate = cDateStr;
+        task.displayStart = formatDisplayDate(cDate);
+      }
+      // 4: SNET (Start No Earlier Than)
+      else if (cType === 4 || cType === "SNET") {
+        const effectiveEarliest =
+          earliestConstraint && earliestConstraint.getTime() > cDate.getTime() ? earliestConstraint : cDate;
+        task.startDate = formatDateIso(effectiveEarliest);
+        task.displayStart = formatDisplayDate(effectiveEarliest);
+      }
+      // 5: SNLT (Start No Later Than)
+      else if (cType === 5 || cType === "SNLT") {
+        if (earliestConstraint && earliestConstraint.getTime() > cDate.getTime()) {
+          task.constraintConflict = true;
+          task.constraintConflictReason = `Predecessors force start to ${formatDateIso(earliestConstraint)}, violating Start No Later Than constraint of ${cDateStr}.`;
+          warnings.push({
+            taskId: task.id,
+            taskName: task.name,
+            type: "constraint-conflict",
+            severity: "warning",
+            message: task.constraintConflictReason,
+          });
+        }
+      }
+    }
+
+    // Calculate endDate
+    if (task.actualFinish) {
+      task.endDate = task.actualFinish;
+      task.displayEnd = formatDisplayDate(task.actualFinish);
+      task.progress = 100;
+      task.remainingDuration = 0;
+      task.remainingWorkHours = 0;
+    } else if (task.schedulingMode === "manual" && (task.manualEndDate || task.endDate)) {
+      task.endDate = task.manualEndDate || task.endDate;
+      task.displayEnd = formatDisplayDate(task.endDate);
+    } else {
+      if (task.isMilestone || task.duration === 0) {
+        task.endDate = task.startDate;
+        task.displayEnd = task.displayStart;
+      } else {
+        const computedEnd = addWorkingDays(task.startDate, task.duration, taskCal, Boolean(task.isElapsedDuration));
+        task.endDate = formatDateIso(computedEnd);
+        task.displayEnd = formatDisplayDate(computedEnd);
+      }
+    }
+
+    // Finish constraints (MFO, FNET, FNLT) for auto-scheduled tasks
+    if (cDateStr && task.schedulingMode !== "manual") {
+      const cDate = parseIsoDate(cDateStr);
+      // 3: MFO (Must Finish On)
+      if (cType === 3 || cType === "MFO") {
+        task.endDate = cDateStr;
+        task.displayEnd = formatDisplayDate(cDate);
+        if (task.duration > 1) {
+          const adjustedStart = shiftByWorkingDays(cDate, -(task.duration - 1), taskCal);
+          task.startDate = formatDateIso(adjustedStart);
+          task.displayStart = formatDisplayDate(adjustedStart);
+        } else {
+          task.startDate = task.endDate;
+          task.displayStart = task.displayEnd;
+        }
+      }
+      // 6: FNET (Finish No Earlier Than)
+      else if (cType === 6 || cType === "FNET") {
+        const computedEnd = parseIsoDate(task.endDate);
+        if (computedEnd.getTime() < cDate.getTime()) {
+          task.endDate = cDateStr;
+          task.displayEnd = formatDisplayDate(cDate);
+          if (task.duration > 1) {
+            const adjustedStart = shiftByWorkingDays(cDate, -(task.duration - 1), taskCal);
+            task.startDate = formatDateIso(adjustedStart);
+            task.displayStart = formatDisplayDate(adjustedStart);
+          }
+        }
+      }
+      // 7: FNLT (Finish No Later Than)
+      else if (cType === 7 || cType === "FNLT") {
+        const computedEnd = parseIsoDate(task.endDate);
+        if (computedEnd.getTime() > cDate.getTime()) {
+          task.constraintConflict = true;
+          task.constraintConflictReason = `Calculated finish date ${task.endDate} violates Finish No Later Than constraint of ${cDateStr}.`;
+          warnings.push({
+            taskId: task.id,
+            taskName: task.name,
+            type: "constraint-conflict",
+            severity: "warning",
+            message: task.constraintConflictReason,
+          });
+        }
+      }
+    }
+
+    // Deadlines
+    if (task.deadline && task.endDate) {
+      const endT = parseIsoDate(task.endDate).getTime();
+      const deadT = parseIsoDate(task.deadline).getTime();
+      if (endT > deadT) {
+        task.deadlineViolated = true;
+        task.daysPastDeadline = calculateDateVarianceWorkingDays(task.deadline, task.endDate, taskCal);
+        warnings.push({
+          taskId: task.id,
+          taskName: task.name,
+          type: "deadline-violated",
+          severity: "warning",
+          message: `Task '${task.name}' finishes on ${task.endDate}, ${task.daysPastDeadline} working days past deadline ${task.deadline}.`,
+        });
+      } else {
+        task.deadlineViolated = false;
+        task.daysPastDeadline = 0;
+      }
+    }
+
+    // Status Date evaluation
+    if (options?.statusDate) {
+      const evalProgress = evaluateStatusDateAndProgress(task, options.statusDate, taskCal);
+      task.remainingDuration = evalProgress.remainingDuration;
+      task.remainingWorkHours = evalProgress.remainingWorkHours;
+      if (evalProgress.forecastFinish) {
+        task.forecastFinish = evalProgress.forecastFinish;
+      }
+      if (evalProgress.isDelayed) {
+        task.isOverdue = true;
+      }
     }
 
     if (task.startDate !== origStart || task.endDate !== origEnd) {
@@ -445,7 +1263,6 @@ export function recalculateSchedule(
   }
 
   // 3. CPM Backward Pass (Late Dates, Total Float, Free Float, Critical Path)
-  // Identify the project completion date from the latest finish among all leaf tasks
   let latestProjectFinishDate: Date = new Date("2025-09-01");
   for (const t of leafTasks) {
     if (t.endDate) {
@@ -455,6 +1272,11 @@ export function recalculateSchedule(
       }
     }
   }
+
+  // Target Finish Date or Project Finish
+  const projectTargetFinish: Date = options?.targetFinishDate
+    ? parseIsoDate(options.targetFinishDate)
+    : latestProjectFinishDate;
 
   // Build leaf successor map for backward pass
   interface SuccessorLink {
@@ -486,12 +1308,12 @@ export function recalculateSchedule(
     const task = taskMap.get(taskId);
     if (!task) continue;
 
+    const taskCal = getTaskCalendar(task);
     const successors = leafSuccessorMap.get(taskId) || [];
     let lateFinishDate: Date;
 
     if (successors.length === 0) {
-      // Terminal activity with no successors: Late Finish is bounded by project completion
-      lateFinishDate = new Date(latestProjectFinishDate.getTime());
+      lateFinishDate = new Date(projectTargetFinish.getTime());
     } else {
       let earliestLateFinishConstraint: Date | null = null;
 
@@ -501,28 +1323,33 @@ export function recalculateSchedule(
 
         const succLS = parseIsoDate(succ.lateStart);
         const succLF = parseIsoDate(succ.lateFinish);
+        const succCal = getTaskCalendar(succ);
         let maxAllowedFinish: Date;
 
         if (succLink.type === "SS") {
-          // Successor Late Start constrains Predecessor Late Start
-          const maxAllowedStart = shiftByWorkingDays(succLS, -succLink.lag, calendar);
+          const maxAllowedStart = shiftByWorkingDays(succLS, -succLink.lag, succCal);
           maxAllowedFinish =
             task.duration > 1
-              ? addWorkingDays(maxAllowedStart, task.duration, calendar)
+              ? addWorkingDays(maxAllowedStart, task.duration, taskCal, Boolean(task.isElapsedDuration))
               : maxAllowedStart;
         } else if (succLink.type === "FF") {
-          // Successor Late Finish constrains Predecessor Late Finish
-          maxAllowedFinish = shiftByWorkingDays(succLF, -succLink.lag, calendar);
+          maxAllowedFinish = shiftByWorkingDays(succLF, -succLink.lag, succCal);
         } else if (succLink.type === "SF") {
-          // Successor Late Finish constrains Predecessor Late Start
-          const maxAllowedStart = shiftByWorkingDays(succLF, -succLink.lag, calendar);
+          const maxAllowedStart = shiftByWorkingDays(succLF, -succLink.lag, succCal);
           maxAllowedFinish =
             task.duration > 1
-              ? addWorkingDays(maxAllowedStart, task.duration, calendar)
+              ? addWorkingDays(maxAllowedStart, task.duration, taskCal, Boolean(task.isElapsedDuration))
               : maxAllowedStart;
         } else {
-          // Finish-to-Start (FS, Default): Predecessor finishes before Successor Late Start - lag - 1 working day
-          maxAllowedFinish = shiftByWorkingDays(succLS, -(1 + succLink.lag), calendar);
+          // FS
+          if (task.isMilestone || task.duration === 0) {
+            maxAllowedFinish = shiftByWorkingDays(succLS, -succLink.lag, taskCal);
+          } else {
+            const prevCalDay = new Date(succLS.getTime());
+            prevCalDay.setDate(prevCalDay.getDate() - 1);
+            const firstPrevWorking = getPrevWorkingDay(prevCalDay, taskCal);
+            maxAllowedFinish = succLink.lag === 0 ? firstPrevWorking : shiftByWorkingDays(firstPrevWorking, -succLink.lag, taskCal);
+          }
         }
 
         if (!earliestLateFinishConstraint || maxAllowedFinish.getTime() < earliestLateFinishConstraint.getTime()) {
@@ -531,34 +1358,94 @@ export function recalculateSchedule(
       }
 
       lateFinishDate = earliestLateFinishConstraint
-        ? (earliestLateFinishConstraint.getTime() > latestProjectFinishDate.getTime()
-            ? new Date(latestProjectFinishDate.getTime())
-            : earliestLateFinishConstraint)
-        : new Date(latestProjectFinishDate.getTime());
+        ? earliestLateFinishConstraint
+        : new Date(projectTargetFinish.getTime());
     }
 
-    // Ensure late finish falls on a working day
-    if (!isWorkingDay(lateFinishDate, calendar)) {
-      lateFinishDate = getPrevWorkingDay(lateFinishDate, calendar);
+    // In MS Project, deadlines and FNLT / MFO constraints cap the late finish
+    if (task.deadline) {
+      const dDate = parseIsoDate(task.deadline);
+      if (dDate.getTime() < lateFinishDate.getTime()) {
+        lateFinishDate = dDate;
+      }
+    }
+    const cType = typeof task.constraintType === "string" ? task.constraintType.toUpperCase() : task.constraintType;
+    if (task.constraintDate) {
+      if (cType === 7 || cType === "FNLT") {
+        const fnltDate = parseIsoDate(task.constraintDate);
+        if (fnltDate.getTime() < lateFinishDate.getTime()) {
+          lateFinishDate = fnltDate;
+        }
+      } else if (cType === 3 || cType === "MFO") {
+        lateFinishDate = parseIsoDate(task.constraintDate);
+      }
     }
 
-    // Calculate Late Start from Late Finish and duration
+    if (!isWorkingDay(lateFinishDate, taskCal)) {
+      lateFinishDate = getPrevWorkingDay(lateFinishDate, taskCal);
+    }
+
     let lateStartDate: Date;
-    if (task.isMilestone || task.duration <= 1) {
+    if (task.isMilestone || task.duration === 0) {
+      lateStartDate = new Date(lateFinishDate.getTime());
+    } else if (task.duration === 1) {
       lateStartDate = new Date(lateFinishDate.getTime());
     } else {
-      lateStartDate = shiftByWorkingDays(lateFinishDate, -(task.duration - 1), calendar);
+      lateStartDate = shiftByWorkingDays(lateFinishDate, -(task.duration - 1), taskCal);
+    }
+
+    // SNLT or MSO constraint pulls lateStart
+    if (task.constraintDate) {
+      if (cType === 5 || cType === "SNLT") {
+        const snltDate = parseIsoDate(task.constraintDate);
+        if (snltDate.getTime() < lateStartDate.getTime()) {
+          lateStartDate = snltDate;
+          lateFinishDate =
+            task.duration > 1
+              ? addWorkingDays(lateStartDate, task.duration, taskCal, Boolean(task.isElapsedDuration))
+              : lateStartDate;
+        }
+      } else if (cType === 2 || cType === "MSO") {
+        lateStartDate = parseIsoDate(task.constraintDate);
+        lateFinishDate =
+          task.duration > 1
+            ? addWorkingDays(lateStartDate, task.duration, taskCal, Boolean(task.isElapsedDuration))
+            : lateStartDate;
+      }
     }
 
     task.lateStart = formatDateIso(lateStartDate);
     task.lateFinish = formatDateIso(lateFinishDate);
 
-    // Calculate Total Float (working days between Early Start and Late Start)
-    const totalFloat = calculateDateVarianceWorkingDays(task.startDate, task.lateStart, calendar);
-    task.float = Math.max(0, totalFloat);
-    task.isCritical = totalFloat <= 0;
+    // If project is scheduled from finish or ALAP constraint is set, align dates to late pass
+    if (options?.scheduleFromStart === false || task.constraintType === 1 || task.constraintType === "ALAP") {
+      task.startDate = task.lateStart;
+      task.endDate = task.lateFinish;
+      task.displayStart = formatDisplayDate(lateStartDate);
+      task.displayEnd = formatDisplayDate(lateFinishDate);
+    }
 
-    // Calculate Free Float (slack before delaying ANY successor's early start)
+    // Calculate Total Float (working days between Early Start and Late Start)
+    const effectiveEarlyStart = task.earlyStart || task.startDate;
+    const totalFloat = calculateDateVarianceWorkingDays(effectiveEarlyStart, task.lateStart, taskCal);
+    task.float = totalFloat; // Preserve exact float, including negative float
+    task.hasNegativeFloat = totalFloat < 0;
+    task.isCritical = totalFloat <= 0;
+    task.isCalculatedCritical = totalFloat <= 0;
+    const nearCritThreshold = options?.nearCriticalThresholdDays ?? 5;
+    task.isNearCritical = totalFloat > 0 && totalFloat <= nearCritThreshold;
+
+    if (task.hasNegativeFloat) {
+      task.criticalityReason = `Negative total float (${totalFloat} days): task violates deadline or finish constraint on ${task.lateFinish}.`;
+    } else if (task.isCritical) {
+      task.criticalityReason = `Zero total float driving project completion date on ${task.lateFinish}.`;
+    } else if (task.isNearCritical) {
+      task.criticalityReason = `Near-critical path: only ${task.float} days of float before pushing downstream schedule.`;
+    } else {
+      task.criticalityReason = `Flexible: ${task.float} days of total float.`;
+    }
+
+    // Calculate Free Float
     if (successors.length === 0) {
       task.freeFloat = task.float;
     } else {
@@ -567,21 +1454,35 @@ export function recalculateSchedule(
       for (const succLink of successors) {
         const succ = taskMap.get(succLink.succId);
         if (!succ) continue;
+        const succCal = getTaskCalendar(succ);
 
         let slack = 0;
+        const succES = succ.earlyStart || succ.startDate;
+        const succEF = succ.earlyFinish || succ.endDate;
+        const effTaskStart = task.earlyStart || task.startDate;
+        const effTaskEnd = task.earlyFinish || task.endDate;
+
         if (succLink.type === "SS") {
-          const maxEarlyStart = shiftByWorkingDays(succ.startDate, -succLink.lag, calendar);
-          slack = calculateDateVarianceWorkingDays(task.startDate, formatDateIso(maxEarlyStart), calendar);
+          const maxEarlyStart = shiftByWorkingDays(succES, -succLink.lag, succCal);
+          slack = calculateDateVarianceWorkingDays(effTaskStart, formatDateIso(maxEarlyStart), succCal);
         } else if (succLink.type === "FF") {
-          const maxEarlyFinish = shiftByWorkingDays(succ.endDate, -succLink.lag, calendar);
-          slack = calculateDateVarianceWorkingDays(task.endDate, formatDateIso(maxEarlyFinish), calendar);
+          const maxEarlyFinish = shiftByWorkingDays(succEF, -succLink.lag, succCal);
+          slack = calculateDateVarianceWorkingDays(effTaskEnd, formatDateIso(maxEarlyFinish), succCal);
         } else if (succLink.type === "SF") {
-          const maxEarlyStart = shiftByWorkingDays(succ.endDate, -succLink.lag, calendar);
-          slack = calculateDateVarianceWorkingDays(task.startDate, formatDateIso(maxEarlyStart), calendar);
+          const maxEarlyStart = shiftByWorkingDays(succEF, -succLink.lag, succCal);
+          slack = calculateDateVarianceWorkingDays(effTaskStart, formatDateIso(maxEarlyStart), succCal);
         } else {
           // FS
-          const maxEarlyFinish = shiftByWorkingDays(succ.startDate, -(1 + succLink.lag), calendar);
-          slack = calculateDateVarianceWorkingDays(task.endDate, formatDateIso(maxEarlyFinish), calendar);
+          let maxEarlyFinish: Date;
+          if (task.isMilestone || task.duration === 0) {
+            maxEarlyFinish = shiftByWorkingDays(succES, -succLink.lag, taskCal);
+          } else {
+            const prevCalDay = new Date(parseIsoDate(succES).getTime());
+            prevCalDay.setDate(prevCalDay.getDate() - 1);
+            const firstPrevWorking = getPrevWorkingDay(prevCalDay, taskCal);
+            maxEarlyFinish = succLink.lag === 0 ? firstPrevWorking : shiftByWorkingDays(firstPrevWorking, -succLink.lag, taskCal);
+          }
+          slack = calculateDateVarianceWorkingDays(effTaskEnd, formatDateIso(maxEarlyFinish), taskCal);
         }
 
         if (slack < minSlack) {
@@ -589,7 +1490,7 @@ export function recalculateSchedule(
         }
       }
 
-      task.freeFloat = minSlack === Infinity ? task.float : Math.max(0, Math.min(minSlack, task.float));
+      task.freeFloat = minSlack === Infinity ? task.float : Math.min(minSlack, task.float);
     }
   }
 
@@ -602,11 +1503,23 @@ export function recalculateSchedule(
     if (childTasks.length > 0) {
       let minStart: Date | null = null;
       let maxEnd: Date | null = null;
+      let minEarlyStart: Date | null = null;
+      let maxEarlyFinish: Date | null = null;
       let minLateStart: Date | null = null;
       let maxLateFinish: Date | null = null;
       let hasAnyCriticalChild = false;
+      let hasAnyNearCriticalChild = false;
+      let hasAnyNegativeFloatChild = false;
       let minFloat = Infinity;
       let minFreeFloat = Infinity;
+
+      let sumWork = 0;
+      let sumActualWork = 0;
+      let sumRemainingWork = 0;
+      let sumCost = 0;
+      let sumProgress = 0;
+      let childCount = 0;
+      let totalChildDuration = 0;
 
       for (const c of childTasks) {
         if (c.startDate && c.endDate) {
@@ -615,6 +1528,12 @@ export function recalculateSchedule(
           if (!minStart || cStart.getTime() < minStart.getTime()) minStart = cStart;
           if (!maxEnd || cEnd.getTime() > maxEnd.getTime()) maxEnd = cEnd;
         }
+        if (c.earlyStart && c.earlyFinish) {
+          const cES = parseIsoDate(c.earlyStart);
+          const cEF = parseIsoDate(c.earlyFinish);
+          if (!minEarlyStart || cES.getTime() < minEarlyStart.getTime()) minEarlyStart = cES;
+          if (!maxEarlyFinish || cEF.getTime() > maxEarlyFinish.getTime()) maxEarlyFinish = cEF;
+        }
         if (c.lateStart && c.lateFinish) {
           const cLS = parseIsoDate(c.lateStart);
           const cLF = parseIsoDate(c.lateFinish);
@@ -622,39 +1541,99 @@ export function recalculateSchedule(
           if (!maxLateFinish || cLF.getTime() > maxLateFinish.getTime()) maxLateFinish = cLF;
         }
         if (c.isCritical) hasAnyCriticalChild = true;
+        if (c.isNearCritical) hasAnyNearCriticalChild = true;
+        if (c.hasNegativeFloat) hasAnyNegativeFloatChild = true;
         if (typeof c.float === "number" && c.float < minFloat) minFloat = c.float;
         if (typeof c.freeFloat === "number" && c.freeFloat < minFreeFloat) minFreeFloat = c.freeFloat;
+
+        if (typeof c.duration === "number") totalChildDuration += c.duration;
+        if (typeof c.workHours === "number") sumWork += c.workHours;
+        if (typeof c.actualWorkHours === "number") sumActualWork += c.actualWorkHours;
+        if (typeof c.remainingWorkHours === "number") sumRemainingWork += c.remainingWorkHours;
+        if (typeof c.cost === "number") sumCost += c.cost;
+        if (typeof c.progress === "number") {
+          sumProgress += c.progress;
+          childCount++;
+        }
       }
 
       if (minStart && maxEnd) {
         const newStartIso = formatDateIso(minStart);
         const newEndIso = formatDateIso(maxEnd);
         const newDur = countWorkingDays(minStart, maxEnd, calendar);
+        const effFloat = minFloat === Infinity ? 0 : minFloat;
+        const isCrit = hasAnyCriticalChild || effFloat <= 0;
 
-        if (
-          summary.startDate !== newStartIso ||
-          summary.endDate !== newEndIso ||
-          summary.duration !== newDur ||
-          summary.isCritical !== hasAnyCriticalChild ||
-          summary.float !== (minFloat === Infinity ? 0 : minFloat)
-        ) {
-          summary.startDate = newStartIso;
-          summary.endDate = newEndIso;
-          summary.displayStart = formatDisplayDate(minStart);
-          summary.displayEnd = formatDisplayDate(maxEnd);
-          summary.duration = newDur;
-          summary.isCritical = hasAnyCriticalChild;
-          summary.float = minFloat === Infinity ? 0 : minFloat;
-          summary.freeFloat = minFreeFloat === Infinity ? 0 : minFreeFloat;
-          if (minLateStart) summary.lateStart = formatDateIso(minLateStart);
-          if (maxLateFinish) summary.lateFinish = formatDateIso(maxLateFinish);
-          changeCount++;
-        }
+        summary.startDate = newStartIso;
+        summary.endDate = newEndIso;
+        summary.displayStart = formatDisplayDate(minStart);
+        summary.displayEnd = formatDisplayDate(maxEnd);
+        summary.duration = newDur;
+        summary.float = effFloat;
+        summary.freeFloat = minFreeFloat === Infinity ? 0 : minFreeFloat;
+        summary.hasNegativeFloat = effFloat < 0 || hasAnyNegativeFloatChild;
+        summary.isCritical = isCrit;
+        summary.isCalculatedCritical = isCrit;
+        summary.isNearCritical =
+          !isCrit &&
+          (hasAnyNearCriticalChild || (effFloat > 0 && effFloat <= (options?.nearCriticalThresholdDays ?? 5)));
+
+        if (minEarlyStart) summary.earlyStart = formatDateIso(minEarlyStart);
+        if (maxEarlyFinish) summary.earlyFinish = formatDateIso(maxEarlyFinish);
+        if (minLateStart) summary.lateStart = formatDateIso(minLateStart);
+        if (maxLateFinish) summary.lateFinish = formatDateIso(maxLateFinish);
+        changeCount++;
+      }
+
+      if (sumWork > 0) summary.workHours = sumWork;
+      if (sumActualWork > 0) summary.actualWorkHours = sumActualWork;
+      if (sumRemainingWork > 0) summary.remainingWorkHours = sumRemainingWork;
+      if (sumCost > 0) summary.cost = sumCost;
+
+      // Microsoft Project work-weighted progress rollup
+      if (sumWork > 0) {
+        const weightedWork = childTasks.reduce(
+          (acc, c) => acc + (c.workHours || 0) * (c.progress || 0),
+          0
+        );
+        summary.progress = Math.round(weightedWork / sumWork);
+      } else if (totalChildDuration > 0) {
+        const weightedDur = childTasks.reduce(
+          (acc, c) => acc + (c.duration || 0) * (c.progress || 0),
+          0
+        );
+        summary.progress = Math.round(weightedDur / totalChildDuration);
+      } else if (childCount > 0) {
+        summary.progress = Math.round(sumProgress / childCount);
       }
     }
   }
 
   const allUpdated = Array.from(taskMap.values());
+
+  // 5. Resource Workload Evaluation
+  let resourceSummaries: ResourceWorkloadSummary[] | undefined = undefined;
+  if (options?.checkResourceWorkloads !== false) {
+    const resResult = calculateResourceWorkloads(allUpdated, calendar);
+    resourceSummaries = resResult.resourceSummaries;
+    for (const t of allUpdated) {
+      if (resResult.overallocatedTaskIds.has(t.id)) {
+        t.overallocated = true;
+        const peak = resResult.peakAllocationByTask.get(t.id) || 1.0;
+        t.peakAllocationPercent = Math.round(peak * 100);
+        warnings.push({
+          taskId: t.id,
+          taskName: t.name,
+          type: "overallocated",
+          severity: "warning",
+          message: `Resource '${t.assignee || t.byWhom}' is overallocated on this task (${t.peakAllocationPercent}% peak allocation).`,
+        });
+      } else {
+        t.overallocated = false;
+        t.peakAllocationPercent = 100;
+      }
+    }
+  }
 
   // Determine overall project dates
   let pStart = "2025-09-01";
@@ -675,8 +1654,14 @@ export function recalculateSchedule(
     projectEndDate: pEnd,
     criticalTaskCount: criticalTasks.length,
     criticalPathTaskIds: criticalTasks.map((t) => t.id),
+    warnings,
+    resourceSummaries,
+    hasCircularDependency,
+    cycleDetails,
+    hasImpossibleConditions: warnings.some((w) => w.severity === "critical" || w.type === "constraint-conflict"),
   };
 }
+
 
 /**
  * Interface representing schedule variance between Baseline 0 and current working forecast.
@@ -760,6 +1745,71 @@ export function calculateScheduleVariance(
     startVariance,
     finishVariance,
     durationVariance,
+    isDelayed: finishVariance > 0,
+    isAhead: finishVariance < 0,
+    isOnTrack: finishVariance === 0 && startVariance === 0,
+    hasBaseline: true,
+    baselineDuration,
+  };
+}
+
+/**
+ * Calculates schedule variance against any designated baseline slot (0 to 10).
+ * Preserves immutable baseline values during recalculations.
+ */
+export function calculateMultiBaselineVariance(
+  task: ProgrammeTask,
+  slotNumber: number,
+  calendar: ProjectCalendar
+): ScheduleVariance & {
+  startVarianceDays: number;
+  finishVarianceDays: number;
+  durationVarianceDays: number;
+  workVarianceHours?: number;
+  costVariance?: number;
+} {
+  const slot = task.baselineSlots?.[slotNumber];
+  const bStart = slotNumber === 0 ? (task.baseline0Start || slot?.start || slot?.startDate) : (slot?.start || slot?.startDate);
+  const bFinish = slotNumber === 0 ? (task.baseline0Finish || slot?.finish || slot?.finishDate) : (slot?.finish || slot?.finishDate);
+
+  if (!bStart || !bFinish) {
+    return {
+      startVariance: 0,
+      finishVariance: 0,
+      durationVariance: 0,
+      startVarianceDays: 0,
+      finishVarianceDays: 0,
+      durationVarianceDays: 0,
+      isDelayed: false,
+      isAhead: false,
+      isOnTrack: false,
+      hasBaseline: false,
+    };
+  }
+
+  const startVariance = calculateDateVarianceWorkingDays(bStart, task.startDate, calendar);
+  const finishVariance = calculateDateVarianceWorkingDays(bFinish, task.endDate, calendar);
+  const baselineDuration = countWorkingDays(bStart, bFinish, calendar);
+  const currentDuration = task.duration || countWorkingDays(task.startDate, task.endDate, calendar);
+  const durationVariance = currentDuration - baselineDuration;
+
+  const baselineWork = slot?.workHours ?? (slotNumber === 0 ? task.baseline0Work : undefined);
+  const currentWork = task.workHours;
+  const workVarianceHours = typeof baselineWork === "number" && typeof currentWork === "number" ? currentWork - baselineWork : undefined;
+
+  const baselineCost = slot?.cost ?? (slotNumber === 0 ? task.baseline0Cost : undefined);
+  const currentCost = task.cost;
+  const costVariance = typeof baselineCost === "number" && typeof currentCost === "number" ? currentCost - baselineCost : undefined;
+
+  return {
+    startVariance,
+    finishVariance,
+    durationVariance,
+    startVarianceDays: startVariance,
+    finishVarianceDays: finishVariance,
+    durationVarianceDays: durationVariance,
+    workVarianceHours,
+    costVariance,
     isDelayed: finishVariance > 0,
     isAhead: finishVariance < 0,
     isOnTrack: finishVariance === 0 && startVariance === 0,
